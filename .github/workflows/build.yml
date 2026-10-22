@@ -5,6 +5,8 @@ on:
 jobs:
   android:
     runs-on: ubuntu-24.04     # ships Android SDK + build tools preinstalled
+    permissions:
+      contents: write         # lets the job push build files to the "builds" branch
     env:
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
     steps:
