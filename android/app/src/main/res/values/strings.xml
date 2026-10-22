@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Navora</string>
+    <string name="title_activity_main">Navora</string>
+    <string name="package_name">my.navora.app</string>
+    <string name="custom_url_scheme">my.navora.app</string>
+</resources>

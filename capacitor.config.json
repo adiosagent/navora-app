@@ -1,0 +1,25 @@
+{
+  "appId": "my.navora.app",
+  "appName": "Navora",
+  "webDir": "www",
+  "server": {
+    "url": "https://navora.my/?app=1",
+    "androidScheme": "https",
+    "allowNavigation": ["navora.my", "*.navora.my", "api.tomtom.com", "*.tomtom.com", "api.data.gov.my", "overpass-api.de"]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0a1a4a"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0a1a4a",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 1500, "backgroundColor": "#0a1a4a", "showSpinner": false, "launchAutoHide": true },
+    "StatusBar": { "style": "DARK", "backgroundColor": "#0a1a4a" },
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] },
+    "Keyboard": { "resize": "body" }
+  }
+}

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Navora — User Manual &amp; Why Navora</title>
+<meta name="description" content="How to use Navora, the Malaysian-built navigation app: install in 10 seconds, live traffic, AES camera alerts, MET weather warnings, Hello Navora voice assistant, and why it beats Waze, Google Maps and TuJu. No account, no tracking.">
+<link rel="icon" href="icons/favicon.png">
+<meta property="og:title" content="Navora — User Manual">
+<meta property="og:description" content="Navigation that speaks your language, warns you first, and never follows you home.">
+<meta property="og:image" content="icons/icon-512.png">
+<style>
+:root{--navy:#0a1a4a;--blue:#1a5cff;--sky:#2f80ff;--bg:#f4f7fc;--text:#13203a;--muted:#5b6b8c;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--card:#fff;--line:#dfe5f0}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:-apple-system,Inter,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;font-size:16px}
+a{color:var(--blue)}
+.hero{background:linear-gradient(160deg,var(--navy),var(--blue));color:#fff;padding:36px 20px 28px;text-align:center}
+.hero img{width:200px;max-width:70%;background:#fff;border-radius:18px;padding:10px}
+.hero h1{font-size:28px;margin:18px 0 6px}
+.hero p{margin:0 auto;max-width:620px;opacity:.95;font-size:17px}
+.hero .cta{display:inline-block;margin-top:18px;background:#fff;color:var(--navy);font-weight:700;padding:12px 22px;border-radius:12px;text-decoration:none}
+.hero .cta.alt{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.5)}
+nav.toc{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);z-index:5;overflow:auto;white-space:nowrap;padding:8px 12px}
+nav.toc a{display:inline-block;padding:6px 10px;margin-right:4px;border-radius:999px;background:var(--bg);color:var(--navy);text-decoration:none;font-size:13px;font-weight:600}
+main{max-width:860px;margin:0 auto;padding:16px}
+section{background:var(--card);border-radius:16px;padding:20px 18px;margin:16px 0;box-shadow:0 2px 10px rgba(10,26,74,.06)}
+h2{color:var(--navy);font-size:22px;margin:0 0 10px;border-bottom:3px solid var(--blue);padding-bottom:6px}
+h3{color:var(--blue);font-size:17px;margin:18px 0 6px}
+p{margin:0 0 10px}
+.lead{font-size:17px;font-weight:500;color:var(--navy)}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 12px}
+th{background:var(--navy);color:#fff;text-align:left;padding:8px}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:nth-child(even) td{background:#f8faff}
+.yes{color:var(--ok);font-weight:700}.no{color:var(--bad);font-weight:700}.part{color:var(--warn);font-weight:600}
+.scroll{overflow:auto;-webkit-overflow-scrolling:touch}
+.scroll table{min-width:620px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff}
+.card b{display:block;color:var(--navy);font-size:16px;margin-bottom:4px}
+.card small{color:var(--muted);display:block;margin-top:6px}
+ol,ul{padding-left:22px;margin:0 0 10px}li{margin-bottom:6px}
+.steps li{margin-bottom:10px}
+kbd{background:var(--navy);color:#fff;border-radius:6px;padding:2px 8px;font-size:13px;font-family:inherit}
+.say td:first-child{font-weight:600;color:var(--navy);width:48%}
+.tip{background:#eef4ff;border-left:4px solid var(--blue);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px}
+.warn{background:#fff7e6;border-left:4px solid #f5a623;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px}
+.pitch{background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff;border-radius:12px;padding:16px;text-align:center;font-weight:700;font-size:18px;margin:12px 0}
+details{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
+summary{font-weight:600;color:var(--navy);cursor:pointer}
+footer{text-align:center;color:var(--muted);font-size:13px;padding:24px 16px 40px}
+footer img{height:28px;vertical-align:middle;margin-right:6px}
+.emoji{font-size:18px}
+@media(max-width:480px){.hero h1{font-size:24px}section{padding:16px 14px}h2{font-size:20px}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <img src="icons/logo-full.png" alt="Navora">
+  <h1>User Manual &amp; Why Navora</h1>
+  <p>Navigation that speaks your language, warns you first, and never follows you home. Buatan Malaysia · 马来西亚制造.</p>
+  <a class="cta" href="./">Open Navora</a>
+  <a class="cta alt" href="#install">Install in 10 seconds</a>
+</div>
+
+<nav class="toc">
+  <a href="#why">Why Navora</a><a href="#compare">vs Waze · Google · TuJu</a><a href="#install">Install</a><a href="#trip">First trip</a><a href="#voice">Hello Navora</a><a href="#report">Report</a><a href="#settings">Settings</a><a href="#cost">Fuel &amp; tolls</a><a href="#privacy">Privacy</a><a href="#sos">Emergency</a><a href="#faq">FAQ</a>
+</nav>
+
+<main>
+
+<section id="why">
+  <h2>Why Navora?</h2>
+  <p class="lead">Malaysian drivers have been switching between two or three apps to get what they need: Waze for reports, a second app for AES cameras, a third for toll rates. Navora puts all of it in one app, in your language, with nothing tracking you.</p>
+  <div class="pitch">Warns you first · Speaks EN / BM / 中文 · No account, no tracking</div>
+  <div class="grid">
+    <div class="card"><b>🚨 Warns you first</b>Live TomTom incidents refreshed every 60 seconds, plus police, highway and news feeds read by AI and pinned to your map. Waze needs enough users to report before a pin appears.<small>121 live incidents around Kuala Lumpur at the time of testing.</small></div>
+    <div class="card"><b>📷 AES / speed camera alerts</b>Voice and on-screen warning 600 m before every camera on your route, with "slow down" if you are over the limit. No need for a second app.<small>Camera sites from OpenStreetMap plus community reports.</small></div>
+    <div class="card"><b>⛈ Official weather warnings</b>MET Malaysia storm and heavy-rain warnings appear on the map for your state — before they reach the news.<small>Source: data.gov.my, refreshed every 10 minutes.</small></div>
+    <div class="card"><b>🗣 Speaks your language</b>English, Bahasa Melayu and 中文 for the whole interface and the turn-by-turn voice. No other app does both with voice.</div>
+    <div class="card"><b>🎙 "Hello Navora" hands-free</b>Say where you want to go, report a jam, ask how long more — hands stay on the wheel.</div>
+    <div class="card"><b>🔒 No account, no tracking</b>No sign-in, no phone number, no ad trackers. Your position is sent only to calculate the route, never stored.</div>
+    <div class="card"><b>⛽ Real Malaysian costs</b>This week's RON95 / RON97 / diesel price, fuel cost per trip, toll kilometres and one-tap avoid-tolls.</div>
+    <div class="card"><b>⚡ Install in 10 seconds</b>No app store, no updates to download — open navora.my and add it to your home screen. Updates arrive instantly.</div>
+  </div>
+</section>
+
+<section id="compare">
+  <h2>Navora vs Waze, Google Maps and TuJu</h2>
+  <p>Navora matches Waze on the features drivers miss most and beats every option on language, privacy and Malaysian data. The one honest gap is CarPlay / Android Auto, coming in the native version.</p>
+  <div class="scroll"><table>
+    <tr><th>Feature</th><th>Navora</th><th>Waze</th><th>Google Maps</th><th>TuJu</th></tr>
+    <tr><td>Covers all roads (not just highways)</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+    <tr><td>Live traffic colours + traffic-aware ETA</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Highways</td></tr>
+    <tr><td>Crowd reports: police, roadblock, jam, accident</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Limited</td><td class="part">Limited</td></tr>
+    <tr><td>AES / speed camera warnings</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Partial</td><td class="no">No</td></tr>
+    <tr><td>Official MET Malaysia weather warnings</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+    <tr><td>Weekly fuel price + trip fuel cost</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+    <tr><td>Toll shown per route + avoid tolls</td><td class="yes">Yes</td><td class="part">Partial</td><td class="yes">Yes</td><td class="part">Rates only</td></tr>
+    <tr><td>Smart re-route when a faster route appears</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+    <tr><td>Multi-stop routes</td><td class="yes">Up to 5</td><td class="part">1 stop</td><td class="yes">9 stops</td><td class="no">No</td></tr>
+    <tr><td>Depart-later planner</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td></tr>
+    <tr><td>Parking at destination</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td></tr>
+    <tr><td>Petrol, R&amp;R, EV, surau, food along route</td><td class="yes">Yes</td><td class="part">Partial</td><td class="yes">Yes</td><td class="part">R&amp;R only</td></tr>
+    <tr><td>Voice guidance in Bahasa Melayu and 中文</td><td class="yes">Yes</td><td class="part">Partial</td><td class="part">Partial</td><td class="part">BM</td></tr>
+    <tr><td>Hands-free wake word</td><td class="yes">"Hello Navora" (Android)</td><td class="part">Via Assistant</td><td class="part">Via Gemini</td><td class="no">No</td></tr>
+    <tr><td>Voice destination + voice reporting</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+    <tr><td>Works without an account</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+    <tr><td>No advertising or tracking SDKs</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">Shares with govt body</td></tr>
+    <tr><td>Malaysian-owned</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+    <tr><td>Install without app store</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+    <tr><td>CarPlay / Android Auto</td><td class="part">Coming (native app)</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Planned</td></tr>
+  </table></div>
+</section>
+
+<section id="install">
+  <h2>Install in 10 seconds</h2>
+  <ol class="steps">
+    <li>Open <b>navora.my</b> in <b>Chrome</b> (Android) or <b>Safari</b> (iPhone).</li>
+    <li><b>Android:</b> tap the ⋮ menu → <kbd>Add to Home screen</kbd> (or the "Install app" banner).<br><b>iPhone:</b> tap the Share button <span class="emoji">⬆️</span> → <kbd>Add to Home Screen</kbd>.</li>
+    <li>Open Navora from your home screen. Tap <kbd>Allow</kbd> when it asks for your location. Nothing else is requested.</li>
+  </ol>
+  <div class="tip">Navora now opens full-screen like a normal app, works on both Android and iPhone, and updates itself — no app store, no downloads.</div>
+</section>
+
+<section id="trip">
+  <h2>Your first trip</h2>
+  <ol class="steps">
+    <li>Tap <b>Where to?</b> and type a place, or tap a quick chip: 🏠 Home · 💼 Work · ★ saved · 🕘 recent.</li>
+    <li>Navora shows up to <b>three routes</b> with time, distance, traffic delay, 🎫 toll or toll-free, and any alerts on the way. Tap a route pill to switch.</li>
+    <li>Use the tools on the route card:
+      <ul>
+        <li>⛽ petrol · 🅿️ R&amp;R · 🔌 EV charger · 🍜 food · 🕌 surau · 🚻 toilets — <b>along your route</b>, with detour minutes. Tap <b>➜ Go</b> to drive there or <b>➕ Add stop</b> to include it (up to 5 stops).</li>
+        <li>🕒 <b>Plan departure</b> — pick a time and see the ETA with predicted traffic.</li>
+        <li>☆ <b>Save</b> the place as Home, Work or favourite.</li>
+        <li>🅿️ <b>Parking</b> near your destination.</li>
+        <li>📤 <b>Share ETA</b> to WhatsApp or anyone.</li>
+        <li><b>Avoid tolls</b> toggle — re-routes instantly.</li>
+      </ul></li>
+    <li>Tap <kbd>GO</kbd>. Voice guidance starts, the map follows you, and the banner shows the next turn, the one after, distance, remaining time and ETA. A speedometer shows your speed.</li>
+    <li>While you drive, Navora re-checks every 2 minutes and says <i>"Faster route found, saving 6 minutes. Switching."</i> Camera warnings appear 600 m ahead. New accidents or closures on your route are spoken. Near your destination it offers parking.</li>
+    <li>Tap <kbd>End</kbd> to stop. Use <b>2D / 3D</b> to tilt the map and 🔊 to mute.</li>
+  </ol>
+</section>
+
+<section id="voice">
+  <h2>"Hello Navora" — hands-free voice</h2>
+  <p>Turn on <b>Menu ☰ → Settings → "Hello Navora" wake word</b> once and allow the microphone. A small "👂 Hello Navora" pill shows it is listening. On iPhone, tap the 🎙 button instead (iOS does not allow background listening in web apps).</p>
+  <table class="say">
+    <tr><th>Say</th><th>Navora does</th></tr>
+    <tr><td>"Hello Navora"</td><td>Chimes and asks <i>"Yes? Where to?"</i></td></tr>
+    <tr><td>"Go to KLCC" · "Pergi ke Melaka Sentral" · "去 Mid Valley"</td><td>Finds the place, draws the route, reads back the name and time</td></tr>
+    <tr><td>"Go" · "Pergi" · "出发"</td><td>Starts navigation (say "No" / "Tak" to cancel)</td></tr>
+    <tr><td>"Take me home" · "Balik rumah" · "回家"</td><td>Routes to your saved Home ("work" / "kerja" / "公司" for Work)</td></tr>
+    <tr><td>"Report jam" · "Lapor kemalangan" · "报告警察"</td><td>Sends the report from your position</td></tr>
+    <tr><td>"Avoid tolls" · "Tak nak tol" · "不要收费"</td><td>Re-routes toll-free</td></tr>
+    <tr><td>"How long more" · "Berapa lama" · "多久"</td><td>Reads remaining time and ETA</td></tr>
+    <tr><td>"Find petrol" · "Parking"</td><td>Shows options along the route or at the destination</td></tr>
+    <tr><td>"Stop" · "Berhenti" · "停止"</td><td>Ends navigation</td></tr>
+    <tr><td>"Mute" · "Senyap"</td><td>Silences voice guidance</td></tr>
+  </table>
+  <div class="tip">Navora always reads back the place it found and waits for "Go" before starting — a mishear never sends you to the wrong place.</div>
+</section>
+
+<section id="report">
+  <h2>Report for the community</h2>
+  <p>Tap the orange <b>⚠</b> button (or say "Hello Navora, report jam"). One tap for:</p>
+  <p>🚗 Jam · 💥 Accident · 👮 Police · 🚧 Roadblock · 🌊 Flood · ⚠️ Hazard · 📷 Speed camera · 🚘 Breakdown · 🕳 Pothole · ⛔ Road closed · ✅ Clear now</p>
+  <ul>
+    <li>Reports are <b>anonymous</b> — a random device ID, no personal data.</li>
+    <li>Reports within 400 m merge into one; they show to everyone once <b>two drivers confirm</b>. Regular accurate reporters become trusted and show instantly.</li>
+    <li>Two "Clear now" votes retire a report. Cameras stay 14 days, potholes 7 days, jams 45 minutes.</li>
+  </ul>
+</section>
+
+<section id="settings">
+  <h2>Settings</h2>
+  <table>
+    <tr><th>Setting</th><th>What it does</th></tr>
+    <tr><td>Language / Bahasa / 语言</td><td>English, Bahasa Melayu or 中文 — changes the interface and the voice</td></tr>
+    <tr><td>"Hello Navora" wake word</td><td>Background listening for the wake word (Android Chrome)</td></tr>
+    <tr><td>Voice guidance</td><td>On / off (also the 🔊 button while navigating)</td></tr>
+    <tr><td>Voice alerts</td><td>All alerts, or Important only (severe incidents and cameras)</td></tr>
+    <tr><td>Speed camera alerts / Show cameras</td><td>Warnings on or off; camera pins on the map on or off</td></tr>
+    <tr><td>Avoid tolls</td><td>Prefer toll-free routes</td></tr>
+    <tr><td>Auto night mode</td><td>Dark map automatically 7 pm – 7 am</td></tr>
+    <tr><td>Fuel &amp; consumption</td><td>RON95 / RON97 / Diesel / EV and L/100 km — used for the trip cost on every route</td></tr>
+    <tr><td>Map view (☀️ button)</td><td>Day → Night → Satellite</td></tr>
+  </table>
+</section>
+
+<section id="cost">
+  <h2>Fuel prices, trip cost and tolls</h2>
+  <p>The menu shows <b>this week's official fuel prices</b> (RON95, RON97, diesel) with the weekly change, straight from data.gov.my. Every route shows the estimated <b>fuel cost</b> for your car (set fuel type and consumption in Settings), the <b>toll kilometres</b>, and a toll-free alternative when one exists.</p>
+</section>
+
+<section id="privacy">
+  <h2>Privacy — what leaves your phone</h2>
+  <ul>
+    <li><b>No account, no sign-in, no phone number.</b></li>
+    <li>Your GPS position stays on your phone. It is sent only to TomTom to calculate routes and search — never stored by Navora.</li>
+    <li>Reports are anonymous. Your location is shared only when you tap a report button.</li>
+    <li>Saved places (Home, Work, favourites, recents) are stored only on your device.</li>
+    <li>No advertising trackers, no analytics SDKs, no data sold to anyone.</li>
+    <li>Data sources: TomTom (maps, traffic), MET Malaysia (weather), OpenStreetMap (cameras), public highway and police feeds.</li>
+  </ul>
+</section>
+
+<section id="sos">
+  <h2>Emergency</h2>
+  <p>Menu ☰ → 🆘 <b>Emergency</b> gives one-tap calls and a button to copy your exact location to share:</p>
+  <table>
+    <tr><td><b>999</b></td><td>Police / Ambulance / Fire</td></tr>
+    <tr><td><b>PLUSLine 1-800-88-0000</b></td><td>PLUS highway assistance</td></tr>
+    <tr><td><b>LLM 1-800-88-7752</b></td><td>Malaysian Highway Authority</td></tr>
+  </table>
+</section>
+
+<section id="faq">
+  <h2>FAQ</h2>
+  <details><summary>Is Navora free?</summary><p>Yes. Navigation, alerts, voice and reporting are free. A Pro tier with extras may come later; the core app stays free.</p></details>
+  <details><summary>Does it work on iPhone?</summary><p>Yes — add it to your home screen from Safari. Everything works; the only difference is that "Hello Navora" background listening is Android-only, so iPhone uses the 🎙 tap-to-talk button.</p></details>
+  <details><summary>Why is the map blank?</summary><p>Check your internet connection and that location is allowed. Open <a href="check.html">navora.my/check.html</a> — it tests every service and tells you exactly what is wrong.</p></details>
+  <details><summary>How accurate is the traffic?</summary><p>Traffic colours and ETAs come from TomTom's live traffic (the same data used by many car manufacturers), updated every two minutes. Incidents are refreshed every 60 seconds and cross-checked against news and highway feeds.</p></details>
+  <details><summary>Where do the speed camera locations come from?</summary><p>OpenStreetMap's public camera database plus reports from Navora drivers. If a camera is missing, report it with 📷 and it appears for everyone after confirmation.</p></details>
+  <details><summary>Does Navora replace Waze completely?</summary><p>For daily driving in Malaysia, yes: all roads, live traffic, reports, cameras, voice. The one thing missing today is CarPlay / Android Auto, which the native version will add.</p></details>
+  <details><summary>Will it drain my battery?</summary><p>About the same as any navigation app while navigating. The wake word uses the microphone only while the app is open; turn it off in Settings if you do not need it.</p></details>
+  <details><summary>How do I update?</summary><p>You don't need to — Navora updates itself every time you open it.</p></details>
+</section>
+
+</main>
+
+<footer><img src="icons/mark.png" alt="">Navora · navora.my · Built in Malaysia · <a href="./">Open the app</a> · <a href="check.html">System check</a></footer>
+</body>
+</html>
