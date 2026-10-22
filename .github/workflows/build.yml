@@ -39,6 +39,23 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/bundle/release/*.aab
+      - name: Publish build files to the "builds" branch (stable download links)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          set -e
+          mkdir -p /tmp/builds
+          cp android/app/build/outputs/apk/debug/app-debug.apk /tmp/builds/navora-debug.apk
+          if ls android/app/build/outputs/bundle/release/*.aab >/dev/null 2>&1; then
+            cp android/app/build/outputs/bundle/release/*.aab /tmp/builds/navora-release.aab
+          fi
+          VER=$(grep -oP 'versionName "\K[^"]+' android/app/build.gradle || echo "0")
+          CODE=$(grep -oP 'versionCode \K\d+' android/app/build.gradle || echo "0")
+          printf '{"versionName":"%s","versionCode":%s,"commit":"%s","built":"%s"}\n' "$VER" "$CODE" "$GITHUB_SHA" "$(date -u +%FT%TZ)" > /tmp/builds/build.json
+          cd /tmp/builds
+          git init -q && git checkout -q --orphan builds
+          git config user.name "navora-ci" && git config user.email "ci@navora.my"
+          git add -A && git commit -qm "Build $CODE ($VER) from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" builds:builds
   ios:
     runs-on: macos-15
     steps:
