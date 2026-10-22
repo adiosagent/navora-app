@@ -5,6 +5,8 @@ on:
 jobs:
   android:
     runs-on: ubuntu-24.04     # ships Android SDK + build tools preinstalled
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -18,7 +20,7 @@ jobs:
       - name: Build debug APK (install directly on any Android phone)
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
       - name: Build release AAB (for Google Play; signed only if secrets are set)
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
