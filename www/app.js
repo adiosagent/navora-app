@@ -182,7 +182,7 @@ function locate(center) {
     NATIVE.getPosition && NATIVE.getPosition().then(p => onPos(p, center)).catch(() => {});
   }
   if (center && myPos) map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 });
-  if (!myPos) { clearTimeout(window.gpsWarn); window.gpsWarn = setTimeout(() => { if (!myPos) toast('Turn on location (GPS) to use Navora'); }, 12000); }
+  if (!myPos) { clearTimeout(window.gpsWarn); window.gpsWarn = setTimeout(() => { if (!myPos) toast('Turn on location (GPS) to use Navora'); }, 25000); }
 }
 function drawMe() {
   if (!myPos) return;

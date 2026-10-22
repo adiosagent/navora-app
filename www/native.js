@@ -80,6 +80,9 @@
 
   /* ---- push (FCM / APNs) ---- */
   N.initPush = async () => {
+    // FCM needs Firebase (google-services.json) in the native build. Until that is added, calling register() crashes the
+    // Android app, so push is disabled here. Route alerts still arrive as in-app toasts while Navora is open.
+    if (!window.NATIVE_PUSH_ENABLED) return;
     try {
       let p = await Push.call('checkPermissions'); if (p.receive === 'prompt' || p.receive === 'prompt-with-rationale') p = await Push.call('requestPermissions');
       if (p.receive !== 'granted') return;
