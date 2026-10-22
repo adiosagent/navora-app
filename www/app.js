@@ -160,21 +160,29 @@ function setupSearch() {
 }
 
 /* ---------- location ---------- */
+function onPos(p, center) {
+  if (!p || !p.coords || isNaN(+p.coords.latitude)) return;
+  const first = !myPos;
+  myPos = { lat: +p.coords.latitude, lng: +p.coords.longitude, heading: p.coords.heading, speed: p.coords.speed };
+  drawMe(); if (navState) navTick(); if (!myState) resolveState();
+  if (center || first) { try { map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 }); } catch (e) { } }
+  if (first && typeof pendingRoute === 'function') { const f = pendingRoute; pendingRoute = null; f(); }
+}
+let pendingRoute = null;
 function locate(center) {
-  if (window.NATIVE) {   // native GPS via Capacitor (keeps working with screen off while navigating)
-    if (watchId === null) { watchId = 'pending'; NATIVE.watchPosition(p => { myPos = { lat: p.coords.latitude, lng: p.coords.longitude, heading: p.coords.heading, speed: p.coords.speed }; drawMe(); if (navState) navTick(); if (!myState) resolveState(); }, () => toast('Turn on location to use Navora')).then(id => { watchId = id; }); }
-    if (center) NATIVE.getPosition().then(p => { myPos = { lat: p.coords.latitude, lng: p.coords.longitude }; drawMe(); map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 }); }).catch(() => {});
-    return;
+  // 1) Web geolocation (works in browsers AND inside the Capacitor WebView; usually gives a quick network fix)
+  if (navigator.geolocation && watchId === null) {
+    watchId = navigator.geolocation.watchPosition(p => onPos(p), () => {}, { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
+    navigator.geolocation.getCurrentPosition(p => onPos(p, center), () => {}, { enableHighAccuracy: false, maximumAge: 60000, timeout: 8000 });
   }
-  if (!navigator.geolocation) return;
-  if (watchId === null) {
-    watchId = navigator.geolocation.watchPosition(p => {
-      myPos = { lat: p.coords.latitude, lng: p.coords.longitude, heading: p.coords.heading, speed: p.coords.speed };
-      drawMe(); if (navState) navTick();
-      if (!myState) resolveState();
-    }, () => {}, { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 });
+  // 2) Native GPS via Capacitor in the app (keeps working with the screen off while navigating)
+  if (window.NATIVE && !window.nativeWatch) {
+    window.nativeWatch = 'pending';
+    NATIVE.watchPosition(p => onPos(p), () => {}).then(id => { window.nativeWatch = id || 'failed'; }).catch(() => { window.nativeWatch = 'failed'; });
+    NATIVE.getPosition && NATIVE.getPosition().then(p => onPos(p, center)).catch(() => {});
   }
-  if (center) navigator.geolocation.getCurrentPosition(p => { myPos = { lat: p.coords.latitude, lng: p.coords.longitude }; drawMe(); map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 }); }, () => toast('Turn on location to use Navora'));
+  if (center && myPos) map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 });
+  if (!myPos) { clearTimeout(window.gpsWarn); window.gpsWarn = setTimeout(() => { if (!myPos) toast('Turn on location (GPS) to use Navora'); }, 12000); }
 }
 function drawMe() {
   if (!myPos) return;
@@ -189,7 +197,7 @@ async function resolveState() {   // which state am I in → used to pick releva
 /* ---------- routing ---------- */
 function routeOpts() { return { key: KR.TOMTOM_KEY, travelMode: 'car', traffic: true, computeTravelTimeFor: 'all', avoid: S.tolls ? 'tollRoads' : undefined, sectionType: 'tollRoad' }; }
 async function routeTo(dest, name) {
-  if (!myPos) { toast(T('no_gps')); return; }
+  if (!myPos) { toast(T('no_gps')); pendingRoute = () => routeTo(dest, name); locate(false); return; }
   if (!dest || isNaN(+dest.lat) || isNaN(+dest.lng)) { toast('Could not locate that place'); return; }
   destName = name || destName; clearPois();
   try {

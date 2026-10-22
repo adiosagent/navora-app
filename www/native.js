@@ -22,11 +22,12 @@
   N.watchPosition = async (ok, err) => {
     try {
       const perm = await Geo.requestPermissions({ permissions: ['location'] });
-      if (perm.location === 'denied') { err && err({ code: 1, message: 'denied' }); return null; }
-      return await Geo.watchPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }, (pos, e) => { if (e) { err && err(e); return; } ok(pos); });
+      if (perm.location === 'denied' || perm.coarseLocation === 'denied') { err && err({ code: 1, message: 'denied' }); return null; }
+      Geo.getCurrentPosition({ enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }).then(ok).catch(() => {});   // quick network fix first
+      return await Geo.watchPosition({ enableHighAccuracy: true, timeout: 30000, maximumAge: 2000 }, (pos, e) => { if (e) { err && err(e); return; } if (pos) ok(pos); });
     } catch (e) { err && err(e); return null; }
   };
-  N.getPosition = () => Geo.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+  N.getPosition = () => Geo.getCurrentPosition({ enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
   N.clearWatch = id => { try { Geo.clearWatch({ id }); } catch (e) { } };
 
   /* ---- text to speech (native voices, works over music / in background) ---- */
