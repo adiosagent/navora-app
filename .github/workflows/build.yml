@@ -45,11 +45,9 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci --legacy-peer-deps
       - run: npx cap sync ios
-      - name: Install CocoaPods dependencies
-        run: cd ios/App && pod install --repo-update
       - name: Build (unsigned archive — sign in Xcode or with your Apple certificates)
         run: |
-          cd ios/App && xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -archivePath $PWD/build/Navora.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+          cd ios/App && xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -archivePath $PWD/build/Navora.xcarchive archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -skipPackagePluginValidation -skipMacroValidation
       - uses: actions/upload-artifact@v5
         with:
           name: navora-ios-archive
