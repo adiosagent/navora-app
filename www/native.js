@@ -28,6 +28,9 @@
   N.vibrate = pattern => quiet(Hap.call('vibrate', { duration: Array.isArray(pattern) ? pattern[0] : (pattern || 200) }));
   try { navigator.vibrate = N.vibrate; } catch (e) { }
 
+  /* ---- open external app / URL (Google Maps, Waze) ---- */
+  N.openUrl = url => App.call('openUrl', { url }).catch(() => { try { window.open(url, '_system'); } catch (e) { } });
+
   /* ---- share ---- */
   N.share = async text => { try { await Share.call('share', { text }); return true; } catch (e) { return false; } };
 

@@ -143,3 +143,6 @@ body.night .wordmark{filter:brightness(0) invert(1)}
 /* native app: respect status bar + home indicator */
 html.native #topbar{top:calc(var(--safe-top) + 14px)}
 html.native-ios body{--safe-top:env(safe-area-inset-top)}
+
+/* alt navigator row in search results */
+#suggest .alt-row{background:#13341f;border-top:1px solid var(--panel2)}#suggest .alt-row b{color:#2ecc71}

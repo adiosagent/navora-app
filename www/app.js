@@ -7,7 +7,7 @@ let cameras = [], camMarkers = [], camWarned = new Set(), poiMarkers = [];
 let metWarnings = [], metShown = false;
 let navState = null, lastSpokenStep = {}, lastReroute = 0, rerouteTimer = null, lastStyleReload = Date.now();
 const $ = s => document.querySelector(s);
-const S = { voice: true, cam: true, showcam: true, tolls: false, chatty: 'all', autonight: true, fuel: 'ron95', cons: 7 };
+const S = { voice: true, cam: true, showcam: true, tolls: false, chatty: 'all', autonight: true, fuel: 'ron95', cons: 7, altnav: 'google' };
 let places = { home: null, work: null, favs: [], recent: [] }; try { Object.assign(places, JSON.parse(localStorage.getItem('nv_places') || '{}')); } catch (e) { }
 const savePlaces = () => localStorage.setItem('nv_places', JSON.stringify(places));
 let stops = [], departAt = null, fuelPrices = null, lastSpeedKmh = 0, parkingPrompted = false;
@@ -96,6 +96,8 @@ function bindUI() {
   $('#btn-3d').onclick = () => { const p = map.getPitch() > 10 ? 0 : 55; map.easeTo({ pitch: p }); $('#btn-3d').textContent = p ? '2D' : '3D'; };
   $('#btn-mute').onclick = () => { S.voice = !S.voice; saveS(); $('#btn-mute').textContent = S.voice ? '🔊' : '🔇'; $('#s-voice').checked = S.voice; if (!S.voice) speechSynthesis.cancel(); };
   $('#btn-share').onclick = shareEta;
+  $('#btn-altnav').onclick = () => { const d = activeRoute && activeRoute.dest; openAltNav(destName || $('#search').value, d); };
+  $('#s-altnav').value = S.altnav; $('#s-altnav').onchange = e => { S.altnav = e.target.value; saveS(); };
   $('#btn-report').onclick = () => openSheet('#report-sheet');
   $('#report-cancel').onclick = () => closeSheets();
   document.querySelectorAll('.report-grid button').forEach(b => b.onclick = () => sendReport(b.dataset.type));
@@ -145,8 +147,10 @@ function setupSearch() {
     t = setTimeout(async () => {
       try {
         const res = await searchPlaces(q, 7);
-        box.innerHTML = res.map((p, i) => `<div data-i="${i}"><b>${esc(p.name)}</b><small>${esc(p.addr || '')}${p.src === 'osm' ? ' · OSM' : ''}</small></div>`).join('');
-        box.classList.toggle('hidden', !res.length);
+        box.innerHTML = res.map((p, i) => `<div data-i="${i}"><b>${esc(p.name)}</b><small>${esc(p.addr || '')}${p.src === 'osm' ? ' · OSM' : ''}</small></div>`).join('')
+          + `<div class="alt-row"><b>${res.length ? '🔎 ' + T('not_here') : '🔎 ' + T('not_found')}</b><small>${T('open_in', { app: altNavName() })}</small></div>`;
+        box.classList.remove('hidden');
+        box.querySelector('.alt-row').onclick = () => { box.classList.add('hidden'); inp.blur(); openAltNav(q); };
         box.querySelectorAll('div[data-i]').forEach(d => d.onclick = () => {
           const p = res[+d.dataset.i]; box.classList.add('hidden');
           inp.value = p.name; inp.blur();
@@ -544,6 +548,16 @@ async function sendReport(type) {
 function deviceId() { let d = localStorage.getItem('nv_dev'); if (!d) { d = 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('nv_dev', d); } return d; }
 
 /* ---------- share ETA ---------- */
+/* ---------- hand-off to Google Maps / Waze when a place is not in TomTom/OSM ---------- */
+function altNavName() { return S.altnav === 'waze' ? 'Waze' : 'Google Maps'; }
+function openAltNav(q, dest) {
+  const nav = S.altnav === 'waze' ? 'waze' : 'google';
+  let url;
+  if (nav === 'waze') url = dest ? `https://waze.com/ul?ll=${dest.lat},${dest.lng}&navigate=yes` : `https://waze.com/ul?q=${encodeURIComponent(q)}&navigate=yes`;
+  else url = dest ? `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=driving`;
+  if (window.NATIVE && NATIVE.openUrl) NATIVE.openUrl(url); else window.open(url, '_blank');
+}
+window.openAltNav = openAltNav;
 function shareEta() {
   if (!activeRoute) return;
   const eta = fmtTime(new Date(Date.now() + activeRoute.secs * 1000));
