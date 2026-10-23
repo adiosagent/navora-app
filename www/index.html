@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps.css">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 
@@ -90,6 +90,14 @@
 <!-- Camera warning badge (nav) -->
 <div id="speedo" class="hidden"><b id="spd">0</b><small>km/h</small></div>
 <div id="cam-warn" class="hidden">📷 <span data-i="camera_ahead">Speed camera ahead</span> · <b id="cam-dist">--</b></div>
+
+<!-- Driver fatigue reminder -->
+<div id="fatigue" class="hidden">
+  <div class="ft-icon">☕</div>
+  <div class="ft-body"><b data-i="fatigue_title">Are you tired?</b><div id="fatigue-text"></div>
+    <div class="ft-btns"><button id="fatigue-rest" class="primary">🅿️ <span data-i="fatigue_rest">Nearest R&amp;R</span></button><button id="fatigue-fuel" class="ghost">⛽ <span data-i="fatigue_fuel">Petrol stop</span></button><button id="fatigue-ok" class="ghost" data-i="fatigue_ok">I'm fine</button></div>
+  </div>
+</div>
 
 <!-- Toast -->
 <div id="toast" class="hidden"></div>
@@ -167,6 +175,8 @@
   <label class="set-row"><span data-i="avoid_tolls">Avoid tolls</span><input type="checkbox" id="s-tolls"></label>
   <label class="set-row"><span data-i="show_cams">Show cameras on map</span><input type="checkbox" id="s-showcam" checked></label>
   <div class="set-row"><span data-i="voice_level">Voice alerts</span><select id="s-chatty"><option value="all" data-i="vl_all">All alerts</option><option value="important" data-i="vl_imp">Important only</option></select></div>
+  <label class="set-row"><span data-i="fatigue_set">Break reminder when driving non-stop</span><input type="checkbox" id="s-fatigue" checked></label>
+  <div class="set-row"><span data-i="fatigue_every">Remind every</span><select id="s-fatigueh"><option value="1">1 hour</option><option value="1.5">1.5 hours</option><option value="2">2 hours</option></select></div>
   <label class="set-row"><span data-i="auto_night">Auto night mode (7pm–7am)</span><input type="checkbox" id="s-autonight" checked></label>
   <div class="set-row"><span data-i="alt_nav">Backup navigator (if a place is not found)</span><select id="s-altnav"><option value="google">Google Maps</option><option value="waze">Waze</option></select></div>
   <div class="set-row"><span data-i="fuel_type">Fuel</span><select id="s-fuel"><option value="ron95">RON95</option><option value="ron97">RON97</option><option value="diesel">Diesel</option><option value="ev">EV</option></select></div>
@@ -200,10 +210,10 @@
 
 <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/maps/maps-web.min.js"></script>
 <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.25.0/services/services-web.min.js"></script>
-<script src="config.js?v=18"></script>
-<script src="i18n.js?v=18"></script>
-<script src="native.js?v=18"></script>
-<script src="voice.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="config.js?v=19"></script>
+<script src="i18n.js?v=19"></script>
+<script src="native.js?v=19"></script>
+<script src="voice.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

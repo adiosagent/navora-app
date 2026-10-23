@@ -7,7 +7,7 @@ let cameras = [], camMarkers = [], camWarned = new Set(), poiMarkers = [];
 let metWarnings = [], metShown = false;
 let navState = null, lastSpokenStep = {}, lastReroute = 0, rerouteTimer = null, lastStyleReload = Date.now();
 const $ = s => document.querySelector(s);
-const S = { voice: true, cam: true, showcam: true, tolls: false, chatty: 'all', autonight: true, fuel: 'ron95', cons: 7, altnav: 'google' };
+const S = { voice: true, cam: true, showcam: true, tolls: false, chatty: 'all', autonight: true, fuel: 'ron95', cons: 7, altnav: 'google', fatigue: true, fatigueH: 1 };
 let places = { home: null, work: null, favs: [], recent: [] }; try { Object.assign(places, JSON.parse(localStorage.getItem('nv_places') || '{}')); } catch (e) { }
 const savePlaces = () => localStorage.setItem('nv_places', JSON.stringify(places));
 let stops = [], departAt = null, fuelPrices = null, lastSpeedKmh = 0, parkingPrompted = false;
@@ -119,6 +119,11 @@ function bindUI() {
   $('#s-tolls').onchange = tollsChange; $('#tolls').onchange = tollsChange;
   $('#btn-mute').textContent = S.voice ? '🔊' : '🔇';
   $('#s-chatty').value = S.chatty; $('#s-chatty').onchange = e => { S.chatty = e.target.value; saveS(); };
+  $('#s-fatigue').checked = S.fatigue; $('#s-fatigue').onchange = e => { S.fatigue = e.target.checked; saveS(); };
+  $('#s-fatigueh').value = String(S.fatigueH); $('#s-fatigueh').onchange = e => { S.fatigueH = +e.target.value; saveS(); };
+  $('#fatigue-rest').onclick = () => { $('#fatigue').classList.add('hidden'); if (activeRoute) searchAlong('rest area', '🅿️ R&R'); else { $('#search').value = 'R&R'; $('#search').dispatchEvent(new Event('input')); } };
+  $('#fatigue-fuel').onclick = () => { $('#fatigue').classList.add('hidden'); if (activeRoute) searchAlong('petrol station', '⛽'); else { $('#search').value = 'petrol station'; $('#search').dispatchEvent(new Event('input')); } };
+  $('#fatigue-ok').onclick = () => $('#fatigue').classList.add('hidden');
   $('#s-autonight').checked = S.autonight; $('#s-autonight').onchange = e => { S.autonight = e.target.checked; saveS(); autoNight(); };
   $('#s-fuel').value = S.fuel; $('#s-fuel').onchange = e => { S.fuel = e.target.value; saveS(); if (activeRoute) showRouteCard(); renderFuel(); };
   $('#s-cons').value = S.cons; $('#s-cons').onchange = e => { S.cons = +e.target.value || 7; saveS(); if (activeRoute) showRouteCard(); };
@@ -167,11 +172,36 @@ function onPos(p, center) {
   if (!p || !p.coords || isNaN(+p.coords.latitude)) return;
   const first = !myPos;
   myPos = { lat: +p.coords.latitude, lng: +p.coords.longitude, heading: p.coords.heading, speed: p.coords.speed };
-  drawMe(); if (navState) navTick(); if (!myState) resolveState();
+  drawMe(); if (navState) navTick(); if (!myState) resolveState(); fatigueTick();
   if (center || first) { try { map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 }); } catch (e) { } }
   if (first && typeof pendingRoute === 'function') { const f = pendingRoute; pendingRoute = null; f(); }
 }
 let pendingRoute = null;
+
+/* ---------- driver fatigue reminder: every N hours of continuous driving, suggest a break ---------- */
+const FT = { start: 0, lastMove: 0, lastPos: null, lastT: 0, warned: 0 };
+function fatigueTick() {
+  if (!S.fatigue || !myPos) return;
+  const now = Date.now();
+  let moving = false;
+  if (typeof myPos.speed === 'number' && !isNaN(myPos.speed) && myPos.speed !== null) moving = myPos.speed > 4;   // > ~15 km/h
+  else if (FT.lastPos && FT.lastT) { const d = hav(FT.lastPos.lat, FT.lastPos.lng, myPos.lat, myPos.lng), dt = (now - FT.lastT) / 1000; moving = dt > 0 && d / dt > 4; }
+  FT.lastPos = { lat: myPos.lat, lng: myPos.lng }; FT.lastT = now;
+  if (moving) {
+    if (!FT.start) { FT.start = now; FT.warned = 0; }
+    FT.lastMove = now;
+    const driven = now - FT.start, every = (S.fatigueH || 1) * 3600000;
+    if (driven >= every * (FT.warned + 1)) { FT.warned++; fatigueAlert(Math.round(driven / 60000)); }
+  } else if (FT.start && now - FT.lastMove > 5 * 60000) { FT.start = 0; FT.warned = 0; }   // stopped 5+ min: rested, reset
+}
+function fatigueAlert(mins) {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  const msg = T('fatigue_msg', { time: h ? h + ' h' + (m ? ' ' + m + ' ' + T('min') : '') : m + ' ' + T('min') });
+  speak(msg); if (window.NATIVE) NATIVE.vibrate([400, 200, 400]); else if (navigator.vibrate) navigator.vibrate([400, 200, 400]);
+  const el = $('#fatigue'); $('#fatigue-text').textContent = msg; el.classList.remove('hidden');
+  clearTimeout(window._fatT); window._fatT = setTimeout(() => el.classList.add('hidden'), 90000);
+}
+window.fatigueAlert = fatigueAlert;
 function locate(center) {
   // 1) Web geolocation (works in browsers AND inside the Capacitor WebView; usually gives a quick network fix)
   if (navigator.geolocation && watchId === null) {

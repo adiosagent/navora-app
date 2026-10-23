@@ -146,3 +146,9 @@ html.native-ios body{--safe-top:env(safe-area-inset-top)}
 
 /* alt navigator row in search results */
 #suggest .alt-row{background:#13341f;border-top:1px solid var(--panel2)}#suggest .alt-row b{color:#2ecc71}
+
+/* driver fatigue reminder */
+#fatigue{position:fixed;left:10px;right:10px;top:calc(var(--safe-top) + 72px);z-index:15;display:flex;gap:12px;background:#111;color:#fff;border:2px solid #f5a623;border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:ftin .3s ease-out}
+@keyframes ftin{from{transform:translateY(-20px);opacity:0}to{transform:none;opacity:1}}
+#fatigue .ft-icon{font-size:34px;line-height:1}#fatigue .ft-body{flex:1;min-width:0}#fatigue b{font-size:17px;color:#ffd166}#fatigue-text{font-size:14px;margin:4px 0 10px;opacity:.95}
+#fatigue .ft-btns{display:flex;gap:6px;flex-wrap:wrap}#fatigue .ft-btns button{padding:9px 12px;font-size:14px}
