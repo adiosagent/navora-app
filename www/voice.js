@@ -100,11 +100,7 @@ const VA = {
     await this.say(T('va_notfound', { q: said })); this.backToWake();
   },
   async findPlace(q) {
-    try {
-      const r = await tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', limit: 3, center: myPos ? [myPos.lng, myPos.lat] : undefined, radius: myPos ? 200000 : undefined });
-      const p = (r.results || [])[0]; if (!p) return null;
-      const [la, ln] = LL(p.position); return { lat: la, lng: ln, name: p.poi ? p.poi.name : p.address.freeformAddress };
-    } catch (e) { return null; }
+    try { const r = await searchPlaces(q, 3); const p = r[0]; return p ? { lat: p.lat, lng: p.lng, name: p.name } : null; } catch (e) { return null; }
   },
   async routeAndConfirm(d, name) {
     if (!myPos) { await this.say(T('no_gps')); return this.backToWake(); }

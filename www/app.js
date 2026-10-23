@@ -144,14 +144,13 @@ function setupSearch() {
     if (q.length < 3) { box.classList.add('hidden'); return; }
     t = setTimeout(async () => {
       try {
-        const r = await tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: true, limit: 6, center: myPos ? [myPos.lng, myPos.lat] : undefined, radius: myPos ? 150000 : undefined });
-        const res = r.results || [];
-        box.innerHTML = res.map((p, i) => `<div data-i="${i}"><b>${esc(p.poi ? p.poi.name : p.address.freeformAddress)}</b><small>${esc(p.address.freeformAddress || '')}</small></div>`).join('');
+        const res = await searchPlaces(q, 7);
+        box.innerHTML = res.map((p, i) => `<div data-i="${i}"><b>${esc(p.name)}</b><small>${esc(p.addr || '')}${p.src === 'osm' ? ' · OSM' : ''}</small></div>`).join('');
         box.classList.toggle('hidden', !res.length);
         box.querySelectorAll('div[data-i]').forEach(d => d.onclick = () => {
           const p = res[+d.dataset.i]; box.classList.add('hidden');
-          inp.value = p.poi ? p.poi.name : p.address.freeformAddress; inp.blur();
-          const [la, ln] = LL(p.position); routeTo({ lat: la, lng: ln }, inp.value);
+          inp.value = p.name; inp.blur();
+          routeTo({ lat: p.lat, lng: p.lng }, p.name);
         });
       } catch (e) { box.classList.add('hidden'); }
     }, 300);
@@ -572,6 +571,40 @@ function distToPath(lat, lng, path) {
 }
 let toastTimer;
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), 6000); }
+
+/* ---------- place search: TomTom + OpenStreetMap (Photon) merged — small resorts, kampungs, clinics, schools ---------- */
+const _srchCache = new Map(); let _photonCtl = null;
+function _norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+async function searchPlaces(q, limit) {
+  q = String(q || '').trim(); limit = limit || 6;
+  const key = _norm(q) + '|' + (myPos ? (myPos.lat.toFixed(1) + ',' + myPos.lng.toFixed(1)) : '') + '|' + LANG;
+  if (_srchCache.has(key)) return _srchCache.get(key).slice(0, limit);
+  const center = myPos || { lat: 3.14, lng: 101.69 };   // KL when no fix yet
+  const tomtom = tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: true, limit: 10, center: [center.lng, center.lat] })
+    .then(r => (r.results || []).map(p => { const [la, ln] = LL(p.position); return { lat: la, lng: ln, name: p.poi ? p.poi.name : (p.address.freeformAddress || ''), addr: p.address.freeformAddress || '', src: 'tt', kind: p.type }; }))
+    .catch(() => []);
+  if (_photonCtl) _photonCtl.abort(); _photonCtl = new AbortController();
+  const photon = fetch('https://photon.komoot.io/api/?limit=10&lang=en&lat=' + center.lat + '&lon=' + center.lng + '&q=' + encodeURIComponent(q), { signal: _photonCtl.signal })
+    .then(r => r.json()).then(j => (j.features || []).filter(f => f.properties.countrycode === 'MY' && f.properties.name).map(f => {
+      const p = f.properties; const [ln, la] = f.geometry.coordinates;
+      const addr = [p.street && p.housenumber ? p.housenumber + ' ' + p.street : p.street, p.district, p.city || p.county, p.postcode, p.state].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+      return { lat: +la, lng: +ln, name: p.name, addr, src: 'osm', kind: p.osm_value || p.type };
+    })).catch(() => []);
+  const [a, b] = await Promise.all([tomtom, photon]);
+  if (!a.length && !b.length) { try { const j = await (await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=my&limit=8&q=' + encodeURIComponent(q))).json(); b.push(...j.map(x => ({ lat: +x.lat, lng: +x.lon, name: (x.display_name || '').split(',')[0], addr: (x.display_name || '').split(',').slice(1, 5).join(',').trim(), src: 'osm', kind: x.type }))); } catch (e) { } }
+  const all = [...a, ...b].filter(x => !isNaN(x.lat) && !isNaN(x.lng));
+  // de-duplicate (same name-ish within 300 m)
+  const out = [];
+  for (const x of all) { if (!out.some(y => hav(x.lat, x.lng, y.lat, y.lng) < 300 && (_norm(y.name).includes(_norm(x.name).slice(0, 12)) || _norm(x.name).includes(_norm(y.name).slice(0, 12))))) out.push(x); }
+  // rank: name match quality first, then distance from me
+  const nq = _norm(q), words = nq.split(' ').filter(Boolean);
+  const score = x => { const n = _norm(x.name); let s = 0; if (n === nq) s += 100; else if (n.startsWith(nq)) s += 60; else if (n.includes(nq)) s += 40; s += words.filter(w => n.includes(w)).length * 8; if (/residential|street|unclassified|tertiary|primary|secondary/.test(x.kind || '') && !/jalan|lorong|persiaran|lebuh/.test(nq)) s -= 25; if (x.src === 'tt' && x.kind === 'POI') s += 5; const d = myPos ? hav(myPos.lat, myPos.lng, x.lat, x.lng) : 0; s -= Math.min(30, d / 10000); return s; };
+  out.sort((p1, p2) => score(p2) - score(p1));
+  _srchCache.set(key, out); if (_srchCache.size > 200) _srchCache.delete(_srchCache.keys().next().value);
+  return out.slice(0, limit);
+}
+window.searchPlaces = searchPlaces;
+
 function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function timeAgo(ts) { const m = Math.round((Date.now() / 1000 - ts) / 60); return m < 1 ? 'now' : m < 60 ? m + 'm' : Math.round(m / 60) + 'h'; }
 function fmtDur(s) { const m = Math.round(s / 60); return m < 60 ? m + ' ' + T('min') : Math.floor(m / 60) + ' h ' + (m % 60) + ' ' + T('min'); }
