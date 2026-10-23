@@ -1,0 +1,17 @@
+AddType application/manifest+json .json
+# HTML + service worker are never cached: the Android/iOS app loads navora.my live, so every upload reaches app users on next launch
+<FilesMatch "\.(html|json)$|^sw\.js$">
+  Header set Cache-Control "no-cache, no-store, must-revalidate"
+  Header set Pragma "no-cache"
+  Header set Expires "0"
+</FilesMatch>
+<FilesMatch "^(sw\.js)$">
+  Header set Service-Worker-Allowed "/"
+</FilesMatch>
+# Versioned assets (app.js?v=18 etc.) can be cached; the version query changes on every release
+<FilesMatch "\.(js|css|png|jpg|webp|svg|woff2?)$">
+  Header set Cache-Control "public, max-age=86400"
+</FilesMatch>
+<FilesMatch "^config\.php$">
+  Require all denied
+</FilesMatch>
