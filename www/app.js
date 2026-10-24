@@ -286,6 +286,7 @@ function drawRoutes() {
 function selectRoute(i) { activeIdx = i; activeRoute = routes[i]; drawRoutes(); showRouteCard(); }
 function alertsOnRoute(rt) { return alerts.filter(a => a.lat && a.lng && distToPath(a.lat, a.lng, rt.path) <= KR.ROUTE_ALERT_RADIUS_M); }
 function showRouteCard() {
+  if (!localStorage.getItem('nv_tip_lp')) { localStorage.setItem('nv_tip_lp', '1'); setTimeout(() => toast('📍 ' + T('longpress_tip')), 2500); }
   const rt = activeRoute; routeAlerts = rt.alerts = alertsOnRoute(rt);
   const base = departAt && departAt > new Date() ? departAt.getTime() : Date.now();
   const eta2 = new Date(base + rt.secs * 1000);
@@ -701,7 +702,16 @@ async function searchPlaces(q, limit) {
   const tomtom = tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: !addressy, limit: 10, center: [center.lng, center.lat] })
     .then(r => (r.results || []).map(mapTT)).catch(() => []);
   // full address → TomTom geocoder (street numbers, Taman / Jalan addresses) in parallel
-  const geo = addressy ? tt.services.geocode({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', limit: 5, center: [center.lng, center.lat] }).then(r => (r.results || []).map(mapTT)).catch(() => []) : Promise.resolve([]);
+  const geoFn = tt.services.geocode || tt.services.fuzzySearch;
+  const geo = addressy ? (async () => {
+    let r = await geoFn({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', limit: 5, center: [center.lng, center.lat] }).then(x => (x.results || []).map(mapTT)).catch(() => []);
+    if (!r.length) {   // "72, CVR 9, Taman X" → "72 Jalan CVR 9, Taman X": many Malaysian addresses omit the word Jalan
+      const parts = q.split(',').map(x => x.trim()).filter(Boolean);
+      if (parts.length > 1 && !/\b(jalan|lorong|persiaran|lebuh)\b/i.test(parts[1])) { const q2 = parts[0] + ' Jalan ' + parts.slice(1).join(', ');
+        r = await geoFn({ key: KR.TOMTOM_KEY, query: q2, countrySet: 'MY', limit: 5, center: [center.lng, center.lat] }).then(x => (x.results || []).map(mapTT)).catch(() => []); }
+    }
+    return r;
+  })() : Promise.resolve([]);
   if (_photonCtl) _photonCtl.abort(); _photonCtl = new AbortController();
   const photon = fetch('https://photon.komoot.io/api/?limit=10&lang=en&lat=' + center.lat + '&lon=' + center.lng + '&q=' + encodeURIComponent(q), { signal: _photonCtl.signal })
     .then(r => r.json()).then(j => (j.features || []).filter(f => f.properties.countrycode === 'MY' && f.properties.name).map(f => {
