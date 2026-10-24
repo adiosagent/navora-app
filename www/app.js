@@ -51,7 +51,8 @@ function ensureRouteLayers() {
   if (map.getSource('routes')) return;
   map.addSource('routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'routes-alt', type: 'line', source: 'routes', filter: ['!=', ['get', 'active'], true], paint: { 'line-color': '#7b8aa8', 'line-width': 6, 'line-opacity': .8 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
-  map.addLayer({ id: 'routes-active', type: 'line', source: 'routes', filter: ['==', ['get', 'active'], true], paint: { 'line-color': view === 'night' ? '#4d8dff' : '#1a5cff', 'line-width': 8 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
+  map.addLayer({ id: 'routes-casing', type: 'line', source: 'routes', filter: ['==', ['get', 'active'], true], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 9, 17, 18] }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
+  map.addLayer({ id: 'routes-active', type: 'line', source: 'routes', filter: ['==', ['get', 'active'], true], paint: { 'line-color': view === 'night' ? '#4d8dff' : '#1a5cff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 6, 17, 13] }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
   drawRoutes();
 }
 function refreshTraffic() {   // force traffic tiles to re-download (TomTom refreshes every ~2 min)
@@ -93,7 +94,8 @@ function bindUI() {
   $('#btn-clear').onclick = clearRoute;
   $('#btn-go').onclick = startNav;
   $('#btn-stop').onclick = stopNav;
-  $('#btn-3d').onclick = () => { const p = map.getPitch() > 10 ? 0 : 55; map.easeTo({ pitch: p }); $('#btn-3d').textContent = p ? '2D' : '3D'; };
+  $('#btn-3d').onclick = () => { const p = map.getPitch() > 10 ? 0 : 60; navCam.pitch = p; map.easeTo({ pitch: p }); $('#btn-3d').textContent = p ? '2D' : '3D'; };
+  $('#btn-nav-search').onclick = () => { $('#nav-bottom').classList.add('hidden'); $('#route-card').classList.remove('hidden'); setTimeout(() => { $('#route-card').classList.add('hidden'); $('#nav-bottom').classList.remove('hidden'); }, 12000); };
   $('#btn-mute').onclick = () => { S.voice = !S.voice; saveS(); $('#btn-mute').textContent = S.voice ? '🔊' : '🔇'; $('#s-voice').checked = S.voice; if (!S.voice) speechSynthesis.cancel(); };
   $('#btn-share').onclick = shareEta;
   $('#btn-altnav').onclick = () => { const d = activeRoute && activeRoute.dest; openAltNav(destName || $('#search').value, d); };
@@ -242,7 +244,7 @@ async function routeTo(dest, name) {
       secs: rt.summary.travelTimeInSeconds, meters: rt.summary.lengthInMeters, delay: rt.summary.trafficDelayInSeconds || 0,
       toll: (rt.sections || []).some(s => s.sectionType === 'TOLL_ROAD'),
       tollMeters: (rt.sections || []).filter(s => s.sectionType === 'TOLL_ROAD').reduce((m, sec) => m + segLen(rt, sec), 0),
-      steps: (rt.guidance && rt.guidance.instructions || []).map(s => { const [la, ln] = LL(s.point || {}); return { text: s.combinedMessage || s.message, short: s.message, lat: la, lng: ln, maneuver: s.maneuver || '', offset: s.routeOffsetInMeters || 0, sign: s.signpostText || '' }; }).filter(q => !isNaN(q.lat))
+      steps: (rt.guidance && rt.guidance.instructions || []).map(s => { const [la, ln] = LL(s.point || {}); return { text: s.combinedMessage || s.message, short: s.message, lat: la, lng: ln, maneuver: s.maneuver || '', offset: s.routeOffsetInMeters || 0, sign: s.signpostText || '', street: s.street || '', roads: s.roadNumbers || [], exit: s.exitNumber || '', rbExit: s.roundaboutExitNumber || 0 }; }).filter(q => !isNaN(q.lat))
     }));
     if (!routes.length) { toast('No route found'); return; }
     routes.forEach(rt => { rt.alerts = alertsOnRoute(rt); rt.score = rt.secs + rt.alerts.reduce((s, a) => s + (a.severity === 3 ? 900 : a.severity === 2 ? 300 : 60), 0); });
@@ -371,8 +373,9 @@ function startNav() {
   if (!activeRoute) return;
   navState = { idx: 0 }; lastSpokenStep = {}; camWarned.clear();
   $('#route-card').classList.add('hidden'); $('#topbar').classList.add('hidden'); $('#met-strip').classList.add('hidden');
-  $('#nav-banner').classList.remove('hidden');
-  map.setStyle(styleUrl(view, true)); map.easeTo({ zoom: 17, pitch: 55 }); $('#btn-3d').textContent = '2D';
+  $('#nav-banner').classList.remove('hidden'); $('#nav-side').classList.remove('hidden'); $('#nav-bottom').classList.remove('hidden'); $('#nav-street').classList.remove('hidden'); document.body.classList.add('navigating'); $('#btn-report').classList.remove('hidden');
+  navCam = { pitch: 60 }; navDist = cumDist(activeRoute.path); streetAt = { t: 0, lat: 0, lng: 0 };
+  map.setStyle(styleUrl(view, true)); map.easeTo({ zoom: 17.5, pitch: 60 }); $('#btn-3d').textContent = '2D';
   updateNavEta(activeRoute.secs);
   speak(T('v_start') + ' ' + (activeRoute.steps[0] ? activeRoute.steps[0].short : ''));
   navTick();
@@ -380,29 +383,54 @@ function startNav() {
   subscribePush();
   clearInterval(rerouteTimer); rerouteTimer = setInterval(checkFasterRoute, 120000);
 }
+let navCam = { pitch: 60 }, navDist = null, streetAt = { t: 0, lat: 0, lng: 0 };
+function cumDist(path) { const c = [0]; for (let i = 1; i < path.length; i++) c[i] = c[i - 1] + hav(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1]); return c; }
+function nearestIdx(path) { let ni = 0, nd = Infinity; for (let i = 0; i < path.length; i++) { const d = hav(myPos.lat, myPos.lng, path[i][0], path[i][1]); if (d < nd) { nd = d; ni = i; } } return ni; }
 function navTick() {
   if (!navState || !myPos || !activeRoute) return;
   const steps = activeRoute.steps; if (!steps.length) return;
-  map.easeTo({ center: [myPos.lng, myPos.lat], bearing: (myPos.heading != null && !isNaN(myPos.heading)) ? myPos.heading : map.getBearing(), duration: 800 });
+  const kmh = (myPos.speed != null && !isNaN(myPos.speed)) ? myPos.speed * 3.6 : 0;
   if (navState.idx < steps.length - 1 && hav(myPos.lat, myPos.lng, steps[navState.idx].lat, steps[navState.idx].lng) < 25) navState.idx++;
   const cur = steps[navState.idx], nxt = steps[navState.idx + 1];
   const dist = hav(myPos.lat, myPos.lng, cur.lat, cur.lng);
+  // --- chase camera: zoom in near turns, out at speed; car sits in the lower third ---
+  let zoom = kmh > 90 ? 16.2 : kmh > 60 ? 16.8 : 17.4; if (dist < 250) zoom = Math.max(zoom, 18); else if (dist < 600) zoom = Math.max(zoom, 17.6);
+  const bearing = (kmh > 5 && myPos.heading != null && !isNaN(myPos.heading)) ? myPos.heading : map.getBearing();
+  map.easeTo({ center: [myPos.lng, myPos.lat], bearing, zoom, pitch: navCam.pitch, offset: [0, navCam.pitch ? Math.round(innerHeight * 0.22) : Math.round(innerHeight * 0.15)], duration: 900, easing: t => t });
+  // --- banner ---
   $('#nav-dist').textContent = fmtDist(dist);
-  if (myPos.speed != null && !isNaN(myPos.speed)) { lastSpeedKmh = Math.round(myPos.speed * 3.6); $('#spd').textContent = lastSpeedKmh; $('#speedo').classList.remove('hidden'); }
+  $('#nav-icon').innerHTML = maneuverSvg(cur.maneuver, cur.rbExit);
+  const shield = $('#nav-shield'); const road = (cur.roads && cur.roads[0]) || '';
+  if (road) { shield.textContent = road; shield.className = 'shield' + (/^(E|AKLEH|LDP|NPE|SPRINT|DUKE|MEX|KESAS|ELITE|LPT|SKVE|MRR2)/i.test(road) ? ' exp' : ''); shield.classList.remove('hidden'); } else shield.classList.add('hidden');
+  let label = cur.street || cur.sign || cur.short; if (cur.exit) label = T('exit') + ' ' + cur.exit + (cur.sign ? ' · ' + cur.sign : ''); if (/ARRIVE/i.test(cur.maneuver)) label = destName || cur.short;
+  $('#nav-text').textContent = label;
+  $('#nav-next').textContent = nxt && (nxt.offset - cur.offset) < 1500 ? (T('v_then') + ' ' + maneuverIcon(nxt.maneuver) + ' ' + (nxt.street || nxt.sign || nxt.short)) : '';
+  if (kmh || myPos.speed === 0) { lastSpeedKmh = Math.round(kmh); $('#spd').textContent = lastSpeedKmh; $('#speedo').classList.remove('hidden'); }
+  // --- bottom bar: arrival time, remaining time / distance along the route ---
+  if (navDist && navDist.length === activeRoute.path.length) {
+    const ni = nearestIdx(activeRoute.path); const remainM = Math.max(0, navDist[navDist.length - 1] - navDist[ni]);
+    let remainS = activeRoute.secs * (remainM / Math.max(1, activeRoute.meters));
+    if (navState.remainSecs) remainS = Math.max(0, navState.remainSecs - (Date.now() - navState.remainAt) / 1000);
+    $('#nav-arrive').textContent = fmtTime(new Date(Date.now() + remainS * 1000));
+    $('#nav-eta').textContent = fmtDur(remainS) + ' · ' + (remainM / 1000).toFixed(remainM > 10000 ? 0 : 1) + ' km';
+  }
+  // --- current street pill (reverse geocode, throttled) ---
+  if (Date.now() - streetAt.t > 12000 && hav(myPos.lat, myPos.lng, streetAt.lat, streetAt.lng) > 60) {
+    streetAt = { t: Date.now(), lat: myPos.lat, lng: myPos.lng };
+    tt.services.reverseGeocode({ key: KR.TOMTOM_KEY, position: [myPos.lng, myPos.lat], radius: 60 }).then(r => { const a = r.addresses && r.addresses[0] && r.addresses[0].address; const nm = a && (a.streetName || a.street || a.municipalitySubdivision || ''); if (nm) $('#nav-street').textContent = nm; }).catch(() => {});
+  }
   const remain = hav(myPos.lat, myPos.lng, activeRoute.dest.lat, activeRoute.dest.lng);
   if (!parkingPrompted && remain < 600 && steps.length > 1) { parkingPrompted = true; toast('🅿️ ' + T('arriving')); if (S.chatty === 'all') speak(T('arriving')); }
-  $('#nav-text').textContent = cur.short + (cur.sign ? ' → ' + cur.sign : '');
-  $('#nav-next').textContent = nxt ? (T('v_then') + ' ' + maneuverIcon(nxt.maneuver) + ' ' + nxt.short) : '';
-  $('#nav-icon').textContent = maneuverIcon(cur.maneuver);
-  // voice: 1 km, 300 m, 60 m
-  const key = navState.idx;
-  if (dist < 1200 && dist > 900 && !(lastSpokenStep[key] >= 1)) { lastSpokenStep[key] = 1; speak(`${T('v_in')} 1 ${T('v_km')}, ${cur.short}`); }
-  else if (dist < 350 && dist > 120 && !(lastSpokenStep[key] >= 2)) { lastSpokenStep[key] = 2; speak(`${T('v_in')} ${Math.round(dist / 50) * 50} ${T('v_m')}, ${cur.short}` + (nxt && nxt.offset - cur.offset < 400 ? `, ${T('v_then')} ${nxt.short}` : '')); }
-  else if (dist < 70 && !(lastSpokenStep[key] >= 3)) { lastSpokenStep[key] = 3; speak(cur.short); }
+  // --- voice: 2 km (fast roads), 1 km, 400 m, now ---
+  const key = navState.idx, thenTxt = (nxt && nxt.offset - cur.offset < 400) ? `, ${T('v_then')} ${nxt.short}` : '';
+  if (kmh > 70 && dist < 2300 && dist > 1900 && !(lastSpokenStep[key] >= 1)) { lastSpokenStep[key] = 1; speak(`${T('v_in')} 2 ${T('v_km')}, ${cur.short}`); }
+  else if (dist < 1200 && dist > 900 && !(lastSpokenStep[key] >= 2)) { lastSpokenStep[key] = 2; speak(`${T('v_in')} 1 ${T('v_km')}, ${cur.short}`); }
+  else if (dist < 450 && dist > 150 && !(lastSpokenStep[key] >= 3)) { lastSpokenStep[key] = 3; speak(`${T('v_in')} ${Math.round(dist / 50) * 50} ${T('v_m')}, ${cur.short}` + thenTxt); }
+  else if (dist < 70 && !(lastSpokenStep[key] >= 4)) { lastSpokenStep[key] = 4; speak(cur.short + thenTxt); }
   if (navState.idx === steps.length - 1 && dist < 30) { speak(T('v_arrived')); stopNav(); return; }
   checkCameras();
   if (distToPath(myPos.lat, myPos.lng, activeRoute.path) > 80 && Date.now() - lastReroute > 20000) {
-    lastReroute = Date.now(); speak(T('v_reroute')); routeTo(activeRoute.dest, destName).then(() => { if (navState) { navState.idx = 0; lastSpokenStep = {}; } });
+    lastReroute = Date.now(); speak(T('v_reroute')); routeTo(activeRoute.dest, destName).then(() => { if (navState) { navState.idx = 0; lastSpokenStep = {}; navDist = cumDist(activeRoute.path); } });
   }
 }
 function updateNavEta(secs) { $('#nav-eta').textContent = fmtDur(secs) + ' · ETA ' + fmtTime(new Date(Date.now() + secs * 1000)); }
@@ -418,14 +446,30 @@ async function checkFasterRoute() {   // every 2 min: current route (reconstruct
     const curSecs = cur.routes[0].summary.travelTimeInSeconds;
     const best = fresh.routes.reduce((b, r) => r.summary.travelTimeInSeconds < b.summary.travelTimeInSeconds ? r : b, fresh.routes[0]);
     const saved = curSecs - best.summary.travelTimeInSeconds;
-    updateNavEta(curSecs);
-    if (saved >= 180) { const n = Math.round(saved / 60); speak(T('v_faster', { n })); toast('🚀 ' + T('faster', { n })); await routeTo(dest, destName); if (navState) { navState.idx = 0; lastSpokenStep = {}; } updateNavEta(activeRoute.secs); }
+    navState.remainSecs = curSecs; navState.remainAt = Date.now(); updateNavEta(curSecs);
+    if (saved >= 180) { const n = Math.round(saved / 60); speak(T('v_faster', { n })); toast('🚀 ' + T('faster', { n })); await routeTo(dest, destName); if (navState) { navState.idx = 0; lastSpokenStep = {}; navDist = cumDist(activeRoute.path); } updateNavEta(activeRoute.secs); }
   } catch (e) { }
 }
 function stopNav() {
   navState = null; clearInterval(rerouteTimer); if (window.NATIVE) NATIVE.keepAwake(false); map.setStyle(styleUrl(view, false)); map.easeTo({ pitch: 0, bearing: 0 });
-  $('#nav-banner').classList.add('hidden'); $('#cam-warn').classList.add('hidden'); $('#speedo').classList.add('hidden'); $('#topbar').classList.remove('hidden'); showMet();
+  $('#nav-banner').classList.add('hidden'); $('#nav-side').classList.add('hidden'); $('#nav-bottom').classList.add('hidden'); $('#nav-street').classList.add('hidden'); document.body.classList.remove('navigating'); $('#cam-warn').classList.add('hidden'); $('#speedo').classList.add('hidden'); $('#topbar').classList.remove('hidden'); showMet();
   if (activeRoute) $('#route-card').classList.remove('hidden');
+}
+function maneuverSvg(m, rbExit) {
+  m = (m || '').toUpperCase(); const P = d => `<svg viewBox="0 0 100 100"><path d="${d}"/></svg>`;
+  const head = (x, y, a) => { const r = a * Math.PI / 180, L = 20, p = t => `${(x - L * Math.cos(r + t)).toFixed(0)} ${(y - L * Math.sin(r + t)).toFixed(0)}`; return `M${p(-0.6)} L${x} ${y} L${p(0.6)}`; };
+  if (m.includes('ARRIVE')) return `<svg viewBox="0 0 100 100"><path d="M30 92 V12"/><path d="M30 14 H76 L64 32 L76 50 H30 Z" fill="#fff"/></svg>`;
+  if (m.includes('UTURN') || m.includes('U_TURN')) return P(`M70 92 V40 A20 20 0 0 0 30 40 V62 ${head(30, 62, 90)}`);
+  if (m.includes('ROUNDABOUT')) { const e = rbExit || 0; const out = e === 1 ? `M72 55 H90 ${head(90, 55, 0)}` : (e >= 3 ? `M28 55 H10 ${head(10, 55, 180)}` : `M50 33 V10 ${head(50, 10, -90)}`); return `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="22"/><path d="M50 95 V77"/><path d="${out}"/></svg>`; }
+  if (m.includes('SHARP_LEFT')) return P(`M58 92 V38 L30 66 ${head(30, 66, 135)}`);
+  if (m.includes('SHARP_RIGHT')) return P(`M42 92 V38 L70 66 ${head(70, 66, 45)}`);
+  if (m.includes('BEAR_LEFT') || m.includes('KEEP_LEFT') || (m.includes('LEFT') && (m.includes('EXIT') || m.includes('RAMP')))) return P(`M58 92 V60 L36 38 V12 ${head(36, 12, -90)}`);
+  if (m.includes('BEAR_RIGHT') || m.includes('KEEP_RIGHT') || (m.includes('RIGHT') && (m.includes('EXIT') || m.includes('RAMP')))) return P(`M42 92 V60 L64 38 V12 ${head(64, 12, -90)}`);
+  if (m.includes('LEFT')) return P(`M58 92 V52 A12 12 0 0 0 46 40 H16 ${head(16, 40, 180)}`);
+  if (m.includes('RIGHT')) return P(`M42 92 V52 A12 12 0 0 1 54 40 H84 ${head(84, 40, 0)}`);
+  if (m.includes('EXIT') || m.includes('RAMP')) return P(`M42 92 V60 L64 38 V12 ${head(64, 12, -90)}`);
+  if (m.includes('MERGE') || m.includes('MOTORWAY')) return P(`M30 92 L50 55 V12 ${head(50, 12, -90)} M70 92 L50 55`);
+  return P(`M50 92 V12 ${head(50, 12, -90)}`);
 }
 function maneuverIcon(m) {
   m = (m || '').toUpperCase();

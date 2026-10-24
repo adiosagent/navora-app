@@ -1,6 +1,6 @@
 // Navora service worker — NETWORK-FIRST for the app shell (so updates show immediately), cache fallback when offline.
-const CACHE = 'navora-v19';
-const SHELL = ['./', './index.html', './style.css?v=19', './app.js?v=19', './i18n.js?v=19', './voice.js?v=19', './config.js?v=19', './manifest.json'];
+const CACHE = 'navora-v20';
+const SHELL = ['./', './index.html', './style.css?v=20', './app.js?v=20', './i18n.js?v=20', './voice.js?v=20', './config.js?v=20', './manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting()));
