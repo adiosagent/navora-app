@@ -77,6 +77,13 @@ document.addEventListener('DOMContentLoaded', () => {
   map.on('load', () => {
     ensureRouteLayers();
     map.on('click', 'routes-alt', e => selectRoute(e.features[0].properties.idx));
+    // long-press anywhere on the map → "Navigate here" (for places no provider has mapped yet)
+    let lpT = null, lpStart = null;
+    const lpCancel = () => { clearTimeout(lpT); lpT = null; };
+    map.on('touchstart', e => { if (e.originalEvent.touches.length !== 1) return lpCancel(); lpStart = e.point; lpT = setTimeout(() => dropPin(e.lngLat), 650); });
+    map.on('touchmove', e => { if (lpStart && e.point && Math.hypot(e.point.x - lpStart.x, e.point.y - lpStart.y) > 10) lpCancel(); });
+    map.on('touchend', lpCancel); map.on('touchcancel', lpCancel);
+    map.on('contextmenu', e => dropPin(e.lngLat));
     map.on('moveend', () => { if (!navState) { loadAlerts(); loadIncidents(); } drawCameras(); });
     loadIncidents(); loadCameras();
   });
@@ -161,7 +168,7 @@ function setupSearch() {
         box.querySelectorAll('div[data-i]').forEach(d => d.onclick = () => {
           const p = res[+d.dataset.i]; box.classList.add('hidden');
           inp.value = p.name; inp.blur();
-          routeTo({ lat: p.lat, lng: p.lng }, p.name);
+          routeTo({ lat: p.elat != null ? p.elat : p.lat, lng: p.elng != null ? p.elng : p.lng }, p.name);
         });
       } catch (e) { box.classList.add('hidden'); }
     }, 300);
@@ -231,6 +238,18 @@ async function resolveState() {   // which state am I in → used to pick releva
 
 /* ---------- routing ---------- */
 function routeOpts() { return { key: KR.TOMTOM_KEY, travelMode: 'car', traffic: true, computeTravelTimeFor: 'all', avoid: S.tolls ? 'tollRoads' : undefined, sectionType: 'tollRoad' }; }
+let pinPopup = null;
+async function dropPin(ll) {
+  if (navState) return;
+  if (pinPopup) { pinPopup.remove(); pinPopup = null; }
+  if (window.NATIVE) NATIVE.vibrate(60); else if (navigator.vibrate) navigator.vibrate(60);
+  let label = ll.lat.toFixed(5) + ', ' + ll.lng.toFixed(5);
+  pinPopup = new tt.Popup({ offset: 12, closeButton: true }).setLngLat([ll.lng, ll.lat]).setHTML(`<div class="pop"><b>📍 ${T('dropped_pin')}</b><br><small id="pin-addr">${label}</small><br><button class="pop-go" id="pin-go">${T('navigate_here')}</button> <button class="pop-go alt" id="pin-save">☆ ${T('saved')}</button></div>`).addTo(map);
+  const wire = () => { const g = document.getElementById('pin-go'), sv = document.getElementById('pin-save'); if (g) g.onclick = () => { pinPopup.remove(); $('#search').value = label; routeTo({ lat: ll.lat, lng: ll.lng }, label); }; if (sv) sv.onclick = () => { pinPopup.remove(); const d = { lat: ll.lat, lng: ll.lng, name: label }; if (!places.favs.some(f => samePlace(f, d))) places.favs = [d, ...places.favs].slice(0, 20); savePlaces(); renderQuick(true); toast('★ ' + T('saved')); }; };
+  wire();
+  try { const r = await tt.services.reverseGeocode({ key: KR.TOMTOM_KEY, position: [ll.lng, ll.lat] }); const a = r.addresses && r.addresses[0] && r.addresses[0].address; if (a && a.freeformAddress) { label = a.freeformAddress; const el = document.getElementById('pin-addr'); if (el) el.textContent = label; wire(); } } catch (e) { }
+}
+window.dropPin = dropPin;
 async function routeTo(dest, name) {
   if (!myPos) { toast(T('no_gps')); pendingRoute = () => routeTo(dest, name); locate(false); return; }
   if (!dest || isNaN(+dest.lat) || isNaN(+dest.lng)) { toast('Could not locate that place'); return; }
@@ -663,14 +682,26 @@ function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.rem
 /* ---------- place search: TomTom + OpenStreetMap (Photon) merged — small resorts, kampungs, clinics, schools ---------- */
 const _srchCache = new Map(); let _photonCtl = null;
 function _norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+const ABBR = { jln: 'Jalan', jl: 'Jalan', lrg: 'Lorong', psn: 'Persiaran', psrn: 'Persiaran', tmn: 'Taman', kg: 'Kampung', kpg: 'Kampung', bt: 'Batu', lbh: 'Lebuh', lbhry: 'Lebuhraya', pjs: 'PJS', ss: 'SS', bdr: 'Bandar', spg: 'Simpang', pt: 'PT', blk: 'Blok' };
+function normQuery(q) {
+  let t = String(q || '').replace(/\s+/g, ' ').trim();
+  t = t.replace(/^(no\.?|nombor|lot|unit|#)\s*/i, '').replace(/,\s*(no\.?|lot)\s+/gi, ', ');
+  t = t.split(' ').map(w => { const k = w.replace(/[.,]/g, '').toLowerCase(); return ABBR[k] ? w.replace(/[^.,]+/, ABBR[k]).replace('.', '') : w; }).join(' ');
+  return t;
+}
+function isAddressy(q) { return /\d/.test(q) && (/,/.test(q) || /\b(jalan|lorong|persiaran|taman|kampung|lebuh|batu|no|lot|jln|lrg|tmn|kg)\b/i.test(q)); }
 async function searchPlaces(q, limit) {
-  q = String(q || '').trim(); limit = limit || 6;
+  q = normQuery(q); limit = limit || 6;
   const key = _norm(q) + '|' + (myPos ? (myPos.lat.toFixed(1) + ',' + myPos.lng.toFixed(1)) : '') + '|' + LANG;
   if (_srchCache.has(key)) return _srchCache.get(key).slice(0, limit);
   const center = myPos || { lat: 3.14, lng: 101.69 };   // KL when no fix yet
-  const tomtom = tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: true, limit: 10, center: [center.lng, center.lat] })
-    .then(r => (r.results || []).map(p => { const [la, ln] = LL(p.position); return { lat: la, lng: ln, name: p.poi ? p.poi.name : (p.address.freeformAddress || ''), addr: p.address.freeformAddress || '', src: 'tt', kind: p.type }; }))
-    .catch(() => []);
+  const addressy = isAddressy(q);
+  const mapTT = p => { const [la, ln] = LL(p.position); const ep = p.entryPoints && p.entryPoints[0] && p.entryPoints[0].position; const e = ep ? LL(ep) : null; const a = p.address || {}; const hn = a.streetNumber || '';
+    return { lat: la, lng: ln, elat: e ? e[0] : undefined, elng: e ? e[1] : undefined, name: p.poi ? p.poi.name : (a.freeformAddress || ''), addr: a.freeformAddress || '', src: 'tt', kind: p.type, hn, street: a.streetName || '' }; };
+  const tomtom = tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: !addressy, limit: 10, center: [center.lng, center.lat] })
+    .then(r => (r.results || []).map(mapTT)).catch(() => []);
+  // full address → TomTom geocoder (street numbers, Taman / Jalan addresses) in parallel
+  const geo = addressy ? tt.services.geocode({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', limit: 5, center: [center.lng, center.lat] }).then(r => (r.results || []).map(mapTT)).catch(() => []) : Promise.resolve([]);
   if (_photonCtl) _photonCtl.abort(); _photonCtl = new AbortController();
   const photon = fetch('https://photon.komoot.io/api/?limit=10&lang=en&lat=' + center.lat + '&lon=' + center.lng + '&q=' + encodeURIComponent(q), { signal: _photonCtl.signal })
     .then(r => r.json()).then(j => (j.features || []).filter(f => f.properties.countrycode === 'MY' && f.properties.name).map(f => {
@@ -678,7 +709,7 @@ async function searchPlaces(q, limit) {
       const addr = [p.street && p.housenumber ? p.housenumber + ' ' + p.street : p.street, p.district, p.city || p.county, p.postcode, p.state].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
       return { lat: +la, lng: +ln, name: p.name, addr, src: 'osm', kind: p.osm_value || p.type };
     })).catch(() => []);
-  const [a, b] = await Promise.all([tomtom, photon]);
+  const [a0, b, g] = await Promise.all([tomtom, photon, geo]); const a = [...g, ...a0];
   if (!a.length && !b.length) { try { const j = await (await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=my&limit=8&q=' + encodeURIComponent(q))).json(); b.push(...j.map(x => ({ lat: +x.lat, lng: +x.lon, name: (x.display_name || '').split(',')[0], addr: (x.display_name || '').split(',').slice(1, 5).join(',').trim(), src: 'osm', kind: x.type }))); } catch (e) { } }
   const all = [...a, ...b].filter(x => !isNaN(x.lat) && !isNaN(x.lng));
   // de-duplicate (same name-ish within 300 m)
@@ -686,7 +717,7 @@ async function searchPlaces(q, limit) {
   for (const x of all) { if (!out.some(y => hav(x.lat, x.lng, y.lat, y.lng) < 300 && (_norm(y.name).includes(_norm(x.name).slice(0, 12)) || _norm(x.name).includes(_norm(y.name).slice(0, 12))))) out.push(x); }
   // rank: name match quality first, then distance from me
   const nq = _norm(q), words = nq.split(' ').filter(Boolean);
-  const score = x => { const n = _norm(x.name); let s = 0; if (n === nq) s += 100; else if (n.startsWith(nq)) s += 60; else if (n.includes(nq)) s += 40; s += words.filter(w => n.includes(w)).length * 8; if (/residential|street|unclassified|tertiary|primary|secondary/.test(x.kind || '') && !/jalan|lorong|persiaran|lebuh/.test(nq)) s -= 25; if (x.src === 'tt' && x.kind === 'POI') s += 5; const d = myPos ? hav(myPos.lat, myPos.lng, x.lat, x.lng) : 0; s -= Math.min(30, d / 10000); return s; };
+  const score = x => { const n = _norm(x.name); let s = 0; if (n === nq) s += 100; else if (n.startsWith(nq)) s += 60; else if (n.includes(nq)) s += 40; s += words.filter(w => n.includes(w)).length * 8; if (/residential|street|unclassified|tertiary|primary|secondary/.test(x.kind || '') && !/jalan|lorong|persiaran|lebuh/.test(nq)) s -= 25; if (x.src === 'tt' && x.kind === 'POI') s += 5; const num = (nq.match(/\b(\d+[a-z]?)\b/) || [])[1]; if (num && x.hn && _norm(x.hn) === num) s += 70; else if (num && x.kind === 'Point Address') s += 20; if (x.kind === 'Point Address') s += 15; if (/^Street$/.test(x.kind || '') && num) s -= 10; const d = myPos ? hav(myPos.lat, myPos.lng, x.lat, x.lng) : 0; s -= Math.min(30, d / 10000); return s; };
   out.sort((p1, p2) => score(p2) - score(p1));
   _srchCache.set(key, out); if (_srchCache.size > 200) _srchCache.delete(_srchCache.keys().next().value);
   return out.slice(0, limit);
