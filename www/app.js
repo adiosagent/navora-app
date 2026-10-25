@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
   map.on('load', () => {
     ensureRouteLayers();
     map.on('click', 'routes-alt', e => selectRoute(e.features[0].properties.idx));
+    map.on('dragstart', () => { if (navState) userPanned = Date.now() + 8000; });   // pause camera follow for 8 s when the driver looks around
     // long-press anywhere on the map → "Navigate here" (for places no provider has mapped yet)
     let lpT = null, lpStart = null;
     const lpCancel = () => { clearTimeout(lpT); lpT = null; };
@@ -395,7 +396,7 @@ function startNav() {
   $('#route-card').classList.add('hidden'); $('#topbar').classList.add('hidden'); $('#met-strip').classList.add('hidden');
   $('#nav-banner').classList.remove('hidden'); $('#nav-side').classList.remove('hidden'); $('#nav-bottom').classList.remove('hidden'); $('#nav-street').classList.remove('hidden'); document.body.classList.add('navigating'); $('#btn-report').classList.remove('hidden');
   navCam = { pitch: 60 }; navDist = cumDist(activeRoute.path); streetAt = { t: 0, lat: 0, lng: 0 };
-  map.setStyle(styleUrl(view, true)); map.easeTo({ zoom: 17.5, pitch: 60 }); $('#btn-3d').textContent = '2D';
+  map.setStyle(styleUrl(view, true)); try { map.setPadding({ top: 0, bottom: Math.round(innerHeight * 0.42), left: 0, right: 0 }); } catch (e) { } map.easeTo({ zoom: 17.5, pitch: 60, bearing: (myPos && myPos.heading != null && !isNaN(myPos.heading)) ? +myPos.heading : 0 }); $('#btn-3d').textContent = '2D'; userPanned = 0;
   updateNavEta(activeRoute.secs);
   speak(T('v_start') + ' ' + (activeRoute.steps[0] ? activeRoute.steps[0].short : ''));
   navTick();
@@ -413,46 +414,59 @@ function navTick() {
   if (navState.idx < steps.length - 1 && hav(myPos.lat, myPos.lng, steps[navState.idx].lat, steps[navState.idx].lng) < 25) navState.idx++;
   const cur = steps[navState.idx], nxt = steps[navState.idx + 1];
   const dist = hav(myPos.lat, myPos.lng, cur.lat, cur.lng);
-  // --- chase camera: zoom in near turns, out at speed; car sits in the lower third ---
-  let zoom = kmh > 90 ? 16.2 : kmh > 60 ? 16.8 : 17.4; if (dist < 250) zoom = Math.max(zoom, 18); else if (dist < 600) zoom = Math.max(zoom, 17.6);
-  const bearing = (kmh > 5 && myPos.heading != null && !isNaN(myPos.heading)) ? myPos.heading : map.getBearing();
-  map.easeTo({ center: [myPos.lng, myPos.lat], bearing, zoom, pitch: navCam.pitch, offset: [0, navCam.pitch ? Math.round(innerHeight * 0.22) : Math.round(innerHeight * 0.15)], duration: 900, easing: t => t });
+  // --- chase camera: follow the car, heading-up, zoom in near turns / out at speed. Never let a camera error stop guidance. ---
+  try { followCamera(kmh, dist); } catch (e) { navErr('camera', e); try { map.jumpTo({ center: [myPos.lng, myPos.lat] }); } catch (e2) { } }
   // --- banner ---
-  $('#nav-dist').textContent = fmtDist(dist);
-  $('#nav-icon').innerHTML = maneuverSvg(cur.maneuver, cur.rbExit);
-  const shield = $('#nav-shield'); const road = (cur.roads && cur.roads[0]) || '';
-  if (road) { shield.textContent = road; shield.className = 'shield' + (/^(E|AKLEH|LDP|NPE|SPRINT|DUKE|MEX|KESAS|ELITE|LPT|SKVE|MRR2)/i.test(road) ? ' exp' : ''); shield.classList.remove('hidden'); } else shield.classList.add('hidden');
-  let label = cur.street || cur.sign || cur.short; if (cur.exit) label = T('exit') + ' ' + cur.exit + (cur.sign ? ' · ' + cur.sign : ''); if (/ARRIVE/i.test(cur.maneuver)) label = destName || cur.short;
-  $('#nav-text').textContent = label;
-  $('#nav-next').textContent = nxt && (nxt.offset - cur.offset) < 1500 ? (T('v_then') + ' ' + maneuverIcon(nxt.maneuver) + ' ' + (nxt.street || nxt.sign || nxt.short)) : '';
-  if (kmh || myPos.speed === 0) { lastSpeedKmh = Math.round(kmh); $('#spd').textContent = lastSpeedKmh; $('#speedo').classList.remove('hidden'); }
+  try {
+    $('#nav-dist').textContent = fmtDist(dist);
+    $('#nav-icon').innerHTML = maneuverSvg(cur.maneuver, cur.rbExit);
+    const shield = $('#nav-shield'); const road = (cur.roads && cur.roads[0]) || '';
+    if (road) { shield.textContent = road; shield.className = 'shield' + (/^(E|AKLEH|LDP|NPE|SPRINT|DUKE|MEX|KESAS|ELITE|LPT|SKVE|MRR2)/i.test(road) ? ' exp' : ''); shield.classList.remove('hidden'); } else shield.classList.add('hidden');
+    let label = cur.street || cur.sign || cur.short; if (cur.exit) label = T('exit') + ' ' + cur.exit + (cur.sign ? ' · ' + cur.sign : ''); if (/ARRIVE/i.test(cur.maneuver)) label = destName || cur.short;
+    $('#nav-text').textContent = label;
+    $('#nav-next').textContent = nxt && (nxt.offset - cur.offset) < 1500 ? (T('v_then') + ' ' + maneuverIcon(nxt.maneuver) + ' ' + (nxt.street || nxt.sign || nxt.short)) : '';
+    if (kmh || myPos.speed === 0) { lastSpeedKmh = Math.round(kmh); $('#spd').textContent = lastSpeedKmh; $('#speedo').classList.remove('hidden'); }
+  } catch (e) { navErr('banner', e); }
   // --- bottom bar: arrival time, remaining time / distance along the route ---
-  if (navDist && navDist.length === activeRoute.path.length) {
-    const ni = nearestIdx(activeRoute.path); const remainM = Math.max(0, navDist[navDist.length - 1] - navDist[ni]);
-    let remainS = activeRoute.secs * (remainM / Math.max(1, activeRoute.meters));
-    if (navState.remainSecs) remainS = Math.max(0, navState.remainSecs - (Date.now() - navState.remainAt) / 1000);
-    $('#nav-arrive').textContent = fmtTime(new Date(Date.now() + remainS * 1000));
-    $('#nav-eta').textContent = fmtDur(remainS) + ' · ' + (remainM / 1000).toFixed(remainM > 10000 ? 0 : 1) + ' km';
-  }
-  // --- current street pill (reverse geocode, throttled) ---
-  if (Date.now() - streetAt.t > 12000 && hav(myPos.lat, myPos.lng, streetAt.lat, streetAt.lng) > 60) {
-    streetAt = { t: Date.now(), lat: myPos.lat, lng: myPos.lng };
-    tt.services.reverseGeocode({ key: KR.TOMTOM_KEY, position: [myPos.lng, myPos.lat], radius: 60 }).then(r => { const a = r.addresses && r.addresses[0] && r.addresses[0].address; const nm = a && (a.streetName || a.street || a.municipalitySubdivision || ''); if (nm) $('#nav-street').textContent = nm; }).catch(() => {});
-  }
+  try {
+    if (navDist && navDist.length === activeRoute.path.length) {
+      const ni = nearestIdx(activeRoute.path); const remainM = Math.max(0, navDist[navDist.length - 1] - navDist[ni]);
+      let remainS = activeRoute.secs * (remainM / Math.max(1, activeRoute.meters));
+      if (navState.remainSecs) remainS = Math.max(0, navState.remainSecs - (Date.now() - navState.remainAt) / 1000);
+      $('#nav-arrive').textContent = fmtTime(new Date(Date.now() + remainS * 1000));
+      $('#nav-eta').textContent = fmtDur(remainS) + ' · ' + (remainM / 1000).toFixed(remainM > 10000 ? 0 : 1) + ' km';
+    }
+    if (Date.now() - streetAt.t > 12000 && hav(myPos.lat, myPos.lng, streetAt.lat, streetAt.lng) > 60) {
+      streetAt = { t: Date.now(), lat: myPos.lat, lng: myPos.lng };
+      tt.services.reverseGeocode({ key: KR.TOMTOM_KEY, position: [myPos.lng, myPos.lat] }).then(r => { const a = r.addresses && r.addresses[0] && r.addresses[0].address; const nm = a && (a.streetName || a.street || a.municipalitySubdivision || ''); if (nm) $('#nav-street').textContent = nm; }).catch(() => {});
+    }
+  } catch (e) { navErr('eta', e); }
   const remain = hav(myPos.lat, myPos.lng, activeRoute.dest.lat, activeRoute.dest.lng);
   if (!parkingPrompted && remain < 600 && steps.length > 1) { parkingPrompted = true; toast('🅿️ ' + T('arriving')); if (S.chatty === 'all') speak(T('arriving')); }
   // --- voice: 2 km (fast roads), 1 km, 400 m, now ---
-  const key = navState.idx, thenTxt = (nxt && nxt.offset - cur.offset < 400) ? `, ${T('v_then')} ${nxt.short}` : '';
-  if (kmh > 70 && dist < 2300 && dist > 1900 && !(lastSpokenStep[key] >= 1)) { lastSpokenStep[key] = 1; speak(`${T('v_in')} 2 ${T('v_km')}, ${cur.short}`); }
-  else if (dist < 1200 && dist > 900 && !(lastSpokenStep[key] >= 2)) { lastSpokenStep[key] = 2; speak(`${T('v_in')} 1 ${T('v_km')}, ${cur.short}`); }
-  else if (dist < 450 && dist > 150 && !(lastSpokenStep[key] >= 3)) { lastSpokenStep[key] = 3; speak(`${T('v_in')} ${Math.round(dist / 50) * 50} ${T('v_m')}, ${cur.short}` + thenTxt); }
-  else if (dist < 70 && !(lastSpokenStep[key] >= 4)) { lastSpokenStep[key] = 4; speak(cur.short + thenTxt); }
+  try {
+    const key = navState.idx, thenTxt = (nxt && nxt.offset - cur.offset < 400) ? `, ${T('v_then')} ${nxt.short}` : '';
+    if (kmh > 70 && dist < 2300 && dist > 1900 && !(lastSpokenStep[key] >= 1)) { lastSpokenStep[key] = 1; speak(`${T('v_in')} 2 ${T('v_km')}, ${cur.short}`); }
+    else if (dist < 1200 && dist > 900 && !(lastSpokenStep[key] >= 2)) { lastSpokenStep[key] = 2; speak(`${T('v_in')} 1 ${T('v_km')}, ${cur.short}`); }
+    else if (dist < 450 && dist > 150 && !(lastSpokenStep[key] >= 3)) { lastSpokenStep[key] = 3; speak(`${T('v_in')} ${Math.round(dist / 50) * 50} ${T('v_m')}, ${cur.short}` + thenTxt); }
+    else if (dist < 70 && !(lastSpokenStep[key] >= 4)) { lastSpokenStep[key] = 4; speak(cur.short + thenTxt); }
+  } catch (e) { navErr('voice', e); }
   if (navState.idx === steps.length - 1 && dist < 30) { speak(T('v_arrived')); stopNav(); return; }
-  checkCameras();
+  try { checkCameras(); } catch (e) { }
   if (distToPath(myPos.lat, myPos.lng, activeRoute.path) > 80 && Date.now() - lastReroute > 20000) {
     lastReroute = Date.now(); speak(T('v_reroute')); routeTo(activeRoute.dest, destName).then(() => { if (navState) { navState.idx = 0; lastSpokenStep = {}; navDist = cumDist(activeRoute.path); } });
   }
 }
+let camBearing = 0, userPanned = 0;
+function followCamera(kmh, dist) {
+  if (Date.now() < userPanned) return;   // user is looking around the map; resume following after a few seconds
+  let zoom = kmh > 90 ? 16.2 : kmh > 60 ? 16.8 : 17.4; if (dist < 250) zoom = Math.max(zoom, 18); else if (dist < 600) zoom = Math.max(zoom, 17.6);
+  if (kmh > 5 && myPos.heading != null && !isNaN(myPos.heading)) camBearing = +myPos.heading;
+  const o = { center: [myPos.lng, myPos.lat], bearing: camBearing, zoom, duration: 900, essential: true };
+  if (navCam.pitch) o.pitch = navCam.pitch; else o.pitch = 0;
+  map.easeTo(o);
+}
+function navErr(where, e) { try { const m = where + ': ' + (e && e.message || e); localStorage.setItem('nv_lasterr', m); if (!window._navErrShown) { window._navErrShown = true; toast('⚠ ' + m); } console.error(e); } catch (x) { } }
 function updateNavEta(secs) { $('#nav-eta').textContent = fmtDur(secs) + ' · ETA ' + fmtTime(new Date(Date.now() + secs * 1000)); }
 async function checkFasterRoute() {   // every 2 min: current route (reconstructed) vs fresh fastest → switch if ≥ 3 min saved
   if (!navState || !myPos || !activeRoute) return;
@@ -471,7 +485,7 @@ async function checkFasterRoute() {   // every 2 min: current route (reconstruct
   } catch (e) { }
 }
 function stopNav() {
-  navState = null; clearInterval(rerouteTimer); if (window.NATIVE) NATIVE.keepAwake(false); map.setStyle(styleUrl(view, false)); map.easeTo({ pitch: 0, bearing: 0 });
+  navState = null; clearInterval(rerouteTimer); if (window.NATIVE) NATIVE.keepAwake(false); map.setStyle(styleUrl(view, false)); try { map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 }); } catch (e) { } map.easeTo({ pitch: 0, bearing: 0 });
   $('#nav-banner').classList.add('hidden'); $('#nav-side').classList.add('hidden'); $('#nav-bottom').classList.add('hidden'); $('#nav-street').classList.add('hidden'); document.body.classList.remove('navigating'); $('#cam-warn').classList.add('hidden'); $('#speedo').classList.add('hidden'); $('#topbar').classList.remove('hidden'); showMet();
   if (activeRoute) $('#route-card').classList.remove('hidden');
 }
@@ -678,6 +692,7 @@ function distToPath(lat, lng, path) {
   return best;
 }
 let toastTimer;
+window.addEventListener('error', e => { try { localStorage.setItem('nv_lasterr', (e.message || '') + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); } catch (x) { } });
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), 6000); }
 
 /* ---------- place search: TomTom + OpenStreetMap (Photon) merged — small resorts, kampungs, clinics, schools ---------- */

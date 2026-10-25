@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navora — integration check</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a1a4a;color:#e8eefc;margin:0;padding:16px}
+h1{font-size:18px;margin:0 0 4px}.sub{color:#8fa0c4;font-size:13px;margin-bottom:14px}
+.row{display:flex;align-items:flex-start;gap:10px;background:#0f2358;border-radius:12px;padding:12px;margin-bottom:8px;font-size:14px}
+.dot{width:14px;height:14px;border-radius:50%;background:#8fa0c4;flex:none;margin-top:3px}.ok .dot{background:#2ecc71}.bad .dot{background:#ff4d4f}.warn .dot{background:#f5a623}
+.row b{display:block}.row small{color:#b8c4e0;word-break:break-all}
+button{background:#1a5cff;color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:15px;margin:8px 0 14px}
+.fix{background:#3a2e12;border-left:4px solid #f5a623;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:6px}
+code{background:#1a3270;padding:1px 5px;border-radius:4px}
+</style></head><body>
+<h1>Navora — integration check</h1>
+<div class="sub">Origin: <span id="origin"></span> · key: <span id="key"></span></div>
+<button onclick="run()">Run checks again</button>
+<div id="out"></div>
+<script src="config.js"></script>
+<script>
+const K = KR.TOMTOM_KEY, out = document.getElementById('out');
+document.getElementById('origin').textContent = location.origin; document.getElementById('key').textContent = K ? K.slice(0, 6) + '…' + K.slice(-4) : 'MISSING';
+const checks = [
+  ['TomTom map tiles', `https://api.tomtom.com/map/1/tile/basic/main/0/0/0.pbf?key=${K}`, r => r.status === 200, 'raw'],
+  ['TomTom map style', `https://api.tomtom.com/style/1/style/22.2.1-*?map=2/basic_street-light&traffic_flow=2/flow_relative-light&traffic_incidents=2/incidents_light&poi=2/poi_light&key=${K}`, r => r.status === 200, 'raw'],
+  ['TomTom search', `https://api.tomtom.com/search/2/search/KLCC.json?key=${K}&countrySet=MY&limit=1`, j => j.results && j.results.length > 0, 'json', j => j.results[0].poi ? j.results[0].poi.name : ''],
+  ['TomTom routing (traffic)', `https://api.tomtom.com/routing/1/calculateRoute/3.139,101.6869:3.15,101.72/json?key=${K}&traffic=true&travelMode=car`, j => j.routes && j.routes.length > 0, 'json', j => Math.round(j.routes[0].summary.travelTimeInSeconds / 60) + ' min, delay ' + (j.routes[0].summary.trafficDelayInSeconds || 0) + 's'],
+  ['TomTom live incidents', `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${K}&bbox=101.5,3.0,101.9,3.3&fields={incidents{type}}&timeValidityFilter=present`, j => Array.isArray(j.incidents), 'json', j => j.incidents.length + ' incidents around KL'],
+  ['TomTom geocode (engine)', `https://api.tomtom.com/search/2/geocode/${encodeURIComponent('Jalan Ampang, Kuala Lumpur')}.json?key=${K}&countrySet=MY&limit=1`, j => j.results && j.results.length > 0, 'json'],
+  ['MET Malaysia warnings (data.gov.my)', 'https://api.data.gov.my/weather/warning?limit=3', j => Array.isArray(j), 'json', j => j.length + ' warnings, latest: ' + (j[0] && j[0].heading_en || '').slice(0, 60)],
+  ['OpenStreetMap speed cameras (Overpass)', 'https://overpass-api.de/api/interpreter', j => j.elements && j.elements[0], 'overpass', j => j.elements[0].tags.total + ' cameras in Malaysia'],
+  ['Navora API — alerts.php', 'api/alerts.php', j => j.ok === true, 'json', j => j.alerts.length + ' alerts, engine last run: ' + (j.engine_last_run ? new Date(j.engine_last_run * 1000).toLocaleString() : 'never (cron not set)')],
+  ['Navora API — report.php (dry)', 'api/report.php', r => r.status === 405 || r.status === 400, 'raw', () => 'endpoint reachable'],
+  ['Service worker', null, async () => (await navigator.serviceWorker.getRegistrations()).length > 0, 'sw'],
+  ['Geolocation permission', null, async () => navigator.permissions ? (await navigator.permissions.query({ name: 'geolocation' })).state : 'unknown', 'perm'],
+];
+async function run() {
+  out.innerHTML = '';
+  for (const [name, url, test, kind, info] of checks) {
+    const row = document.createElement('div'); row.className = 'row'; row.innerHTML = `<div class="dot"></div><div><b>${name}</b><small>checking…</small></div>`; out.appendChild(row);
+    const small = row.querySelector('small');
+    try {
+      let ok = false, detail = '';
+      if (kind === 'sw') { ok = await test(); detail = ok ? 'registered' : 'not registered (needs HTTPS)'; }
+      else if (kind === 'perm') { const st = await test(); ok = st === 'granted'; row.className = 'row ' + (ok ? 'ok' : 'warn'); small.textContent = 'state: ' + st; continue; }
+      else if (kind === 'overpass') { const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent('[out:json][timeout:30];area["ISO3166-1"="MY"][admin_level=2]->.a;(node["highway"="speed_camera"](area.a););out count;') }); const j = await r.json(); ok = !!test(j); detail = ok ? info(j) : 'no data'; }
+      else {
+        const r = await fetch(url, { cache: 'no-store' });
+        if (kind === 'raw') { ok = test(r); detail = 'HTTP ' + r.status + (ok ? '' : ' — ' + (await r.text()).slice(0, 140)); if (info && ok) detail = info(); }
+        else { const txt = await r.text(); let j = {}; try { j = JSON.parse(txt); } catch (e) { } ok = r.status === 200 && !!test(j); detail = ok ? (info ? info(j) : 'HTTP 200') : 'HTTP ' + r.status + ' — ' + txt.slice(0, 140); }
+        if (!ok && /InvalidReferer/.test(detail)) detail += `<div class="fix">Your TomTom key is domain-restricted and <b>${location.hostname}</b> is not allowed. Fix: my.tomtom.com/keys → your key → allowed domains → add <code>https://${location.hostname}/*</code></div>`;
+        if (!ok && /403/.test(detail) && /Forbidden/i.test(detail)) detail += `<div class="fix">Key rejected — check the key value in config.js.</div>`;
+      }
+      row.className = 'row ' + (ok ? 'ok' : 'bad'); small.innerHTML = detail;
+    } catch (e) { row.className = 'row bad'; small.textContent = 'ERR ' + e.message; }
+  }
+}
+run();
+(function(){ try { const e=localStorage.getItem('nv_lasterr'); const d=document.createElement('div'); d.style.cssText='margin:16px 0;padding:12px;border-radius:10px;background:'+(e?'#5a1e1e':'#13341f')+';color:#fff;font:14px monospace'; d.textContent=e?('Last app error: '+e):'No app errors recorded'; document.body.appendChild(d); } catch(x){} })();
+</script></body></html>
