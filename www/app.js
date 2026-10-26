@@ -52,7 +52,9 @@ function ensureRouteLayers() {
   map.addSource('routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'routes-alt', type: 'line', source: 'routes', filter: ['!=', ['get', 'active'], true], paint: { 'line-color': '#7b8aa8', 'line-width': 6, 'line-opacity': .8 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
   map.addLayer({ id: 'routes-casing', type: 'line', source: 'routes', filter: ['==', ['get', 'active'], true], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 9, 17, 18] }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
+  if (!map.hasImage('route-arrow')) { const c = document.createElement('canvas'); c.width = 48; c.height = 48; const g = c.getContext('2d'); g.lineWidth = 7; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#fff'; g.beginPath(); g.moveTo(12, 34); g.lineTo(24, 14); g.lineTo(36, 34); g.stroke(); map.addImage('route-arrow', g.getImageData(0, 0, 48, 48), { pixelRatio: 2 }); }
   map.addLayer({ id: 'routes-active', type: 'line', source: 'routes', filter: ['==', ['get', 'active'], true], paint: { 'line-color': view === 'night' ? '#4d8dff' : '#1a5cff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 6, 17, 13] }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
+  map.addLayer({ id: 'routes-arrows', type: 'symbol', source: 'routes', filter: ['==', ['get', 'active'], true], layout: { 'symbol-placement': 'line', 'symbol-spacing': 70, 'icon-image': 'route-arrow', 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 17, 0.9], 'icon-rotate': 90, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: { 'icon-opacity': 0.95 } });
   drawRoutes();
 }
 function refreshTraffic() {   // force traffic tiles to re-download (TomTom refreshes every ~2 min)
@@ -227,10 +229,41 @@ function locate(center) {
   if (center && myPos) map.flyTo({ center: [myPos.lng, myPos.lat], zoom: 15 });
   if (!myPos) { clearTimeout(window.gpsWarn); window.gpsWarn = setTimeout(() => { if (!myPos) toast('Turn on location (GPS) to use Navora'); }, 25000); }
 }
+const CAR_SVG = `<svg viewBox="0 0 64 112" xmlns="http://www.w3.org/2000/svg">
+<defs><linearGradient id="cb" x1="0" x2="1"><stop offset="0" stop-color="#2f7bff"/><stop offset=".5" stop-color="#1a5cff"/><stop offset="1" stop-color="#0d3fb8"/></linearGradient>
+<linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfe2ff"/><stop offset="1" stop-color="#4b7fc4"/></linearGradient></defs>
+<ellipse cx="32" cy="60" rx="30" ry="50" fill="rgba(0,0,0,.28)"/>
+<rect x="6" y="18" width="10" height="20" rx="4" fill="#111"/><rect x="48" y="18" width="10" height="20" rx="4" fill="#111"/><rect x="6" y="74" width="10" height="20" rx="4" fill="#111"/><rect x="48" y="74" width="10" height="20" rx="4" fill="#111"/>
+<path d="M14 24 Q14 6 32 6 Q50 6 50 24 L52 92 Q52 106 32 106 Q12 106 12 92 Z" fill="url(#cb)" stroke="#0a2a7a" stroke-width="2"/>
+<path d="M17 34 Q32 26 47 34 L45 48 Q32 44 19 48 Z" fill="url(#cg)"/>
+<path d="M18 72 Q32 68 46 72 L47 84 Q32 82 17 84 Z" fill="#9cc8f5" opacity=".9"/>
+<rect x="20" y="48" width="24" height="24" rx="3" fill="#1a4fd6" opacity=".9"/>
+<rect x="15" y="10" width="8" height="5" rx="2" fill="#fff6c8"/><rect x="41" y="10" width="8" height="5" rx="2" fill="#fff6c8"/>
+<rect x="15" y="100" width="8" height="4" rx="2" fill="#ff5252"/><rect x="41" y="100" width="8" height="4" rx="2" fill="#ff5252"/>
+</svg>`;
+let meAnim = null, meShown = { lat: 0, lng: 0, hdg: 0 };
 function drawMe() {
   if (!myPos) return;
-  if (!myMarker) { const el = document.createElement('div'); el.className = 'me-marker'; myMarker = new tt.Marker({ element: el }).setLngLat([myPos.lng, myPos.lat]).addTo(map); }
-  myMarker.setLngLat([myPos.lng, myPos.lat]);
+  if (!myMarker) {
+    const el = document.createElement('div'); el.className = 'car-marker'; el.innerHTML = CAR_SVG;
+    myMarker = new tt.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map', anchor: 'center' }).setLngLat([myPos.lng, myPos.lat]).addTo(map);
+    meShown = { lat: myPos.lat, lng: myPos.lng, hdg: 0 }; return;
+  }
+  // glide from the last shown position to the new fix over ~1 s (GPS updates once a second) — no jumping
+  const from = { ...meShown }, to = { lat: myPos.lat, lng: myPos.lng };
+  const moving = (myPos.speed || 0) > 1.5;
+  const hdgTo = (moving && myPos.heading != null && !isNaN(myPos.heading)) ? +myPos.heading : from.hdg;
+  let dh = ((hdgTo - from.hdg + 540) % 360) - 180;   // shortest arc
+  const t0 = performance.now(), dur = navState ? 1000 : 600;
+  if (meAnim) cancelAnimationFrame(meAnim);
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur), e = k;   // linear = constant speed between fixes
+    meShown = { lat: from.lat + (to.lat - from.lat) * e, lng: from.lng + (to.lng - from.lng) * e, hdg: (from.hdg + dh * e + 360) % 360 };
+    myMarker.setLngLat([meShown.lng, meShown.lat]); myMarker.setRotation(meShown.hdg);
+    if (k < 1) meAnim = requestAnimationFrame(step); else meAnim = null;
+  };
+  meAnim = requestAnimationFrame(step);
+  document.body.classList.toggle('driving', moving);
 }
 async function resolveState() {   // which state am I in → used to pick relevant MET warnings
   myState = '…';
@@ -461,8 +494,8 @@ let camBearing = 0, userPanned = 0;
 function followCamera(kmh, dist) {
   if (Date.now() < userPanned) return;   // user is looking around the map; resume following after a few seconds
   let zoom = kmh > 90 ? 16.2 : kmh > 60 ? 16.8 : 17.4; if (dist < 250) zoom = Math.max(zoom, 18); else if (dist < 600) zoom = Math.max(zoom, 17.6);
-  if (kmh > 5 && myPos.heading != null && !isNaN(myPos.heading)) camBearing = +myPos.heading;
-  const o = { center: [myPos.lng, myPos.lat], bearing: camBearing, zoom, duration: 900, essential: true };
+  if (kmh > 5 && myPos.heading != null && !isNaN(myPos.heading)) { const d = ((+myPos.heading - camBearing + 540) % 360) - 180; camBearing = (camBearing + d * 0.6 + 360) % 360; }   // damp heading jitter
+  const o = { center: [myPos.lng, myPos.lat], bearing: camBearing, zoom, duration: 1000, easing: t => t, essential: true };
   if (navCam.pitch) o.pitch = navCam.pitch; else o.pitch = 0;
   map.easeTo(o);
 }
