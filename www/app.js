@@ -291,7 +291,7 @@ async function resolveState() {   // which state am I in → used to pick releva
 }
 
 /* ---------- routing ---------- */
-function routeOpts() { return { key: KR.TOMTOM_KEY, travelMode: 'car', traffic: true, computeTravelTimeFor: 'all', avoid: S.tolls ? 'tollRoads' : undefined, sectionType: ['tollRoad', 'lanes', 'speedLimit'] }; }
+function routeOpts() { return { key: KR.TOMTOM_KEY, travelMode: 'car', traffic: true, computeTravelTimeFor: 'all', avoid: S.tolls ? 'tollRoads' : undefined, sectionType: ['tollRoad', 'motorway'] }; }
 let pinPopup = null;
 async function dropPin(ll) {
   if (navState) return;
