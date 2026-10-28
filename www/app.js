@@ -324,9 +324,36 @@ async function routeTo(dest, name) {
     routes.forEach(rt => { rt.alerts = alertsOnRoute(rt); rt.score = rt.secs + rt.alerts.reduce((s, a) => s + (a.severity === 3 ? 900 : a.severity === 2 ? 300 : 60), 0); });
     const best = routes.reduce((b, rt) => rt.score < b.score ? rt : b, routes[0]).idx;
     drawRoutes(); selectRoute(best); camWarned.clear(); parkingPrompted = false;
+    enrichSections(locs, stops.length ? 0 : 2, departAt && departAt > new Date() ? departAt.toISOString() : '');
     addRecent(dest, destName); $('#quick').classList.add('hidden');
     if (!navState) { const b = new tt.LngLatBounds(); routes[best].path.forEach(p => b.extend([p[1], p[0]])); map.fitBounds(b, { padding: { top: 90, bottom: 300, left: 40, right: 40 } }); }
   } catch (e) { toast('Route failed: ' + (e.message || e)); }
+}
+/* Lane guidance + speed limits: the map SDK refuses these section types, so ask the TomTom Routing REST API directly
+   (same key, same request) in the background and attach the sections to the routes already on screen. Never blocks routing. */
+let _enrichSeq = 0;
+async function enrichSections(locs, alts, departAt) {
+  const seq = ++_enrichSeq, mine = routes;
+  try {
+    const q = ['key=' + KR.TOMTOM_KEY, 'travelMode=car', 'traffic=true', 'routeType=fastest', 'instructionsType=text', 'maxAlternatives=' + alts,
+      'sectionType=lanes', 'sectionType=speedLimit', 'sectionType=tollRoad', S.tolls ? 'avoid=tollRoads' : '', departAt ? 'departAt=' + encodeURIComponent(departAt) : ''].filter(Boolean).join('&');
+    const url = 'https://api.tomtom.com/routing/1/calculateRoute/' + locs.map(p => p[1] + ',' + p[0]).join(':') + '/json?' + q;
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 12000);
+    const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) return;
+    const j = await r.json(); if (seq !== _enrichSeq || routes !== mine) return;   // a newer route replaced this one
+    (j.routes || []).forEach(rr => {
+      const m = rr.summary.lengthInMeters, s = rr.summary.travelTimeInSeconds;
+      // match the REST route to one of ours by length + time (same engine, same options → same routes)
+      const rt = mine.reduce((b, x) => { const d = Math.abs(x.meters - m) / Math.max(m, 1) + Math.abs(x.secs - s) / Math.max(s, 1); return d < b.d ? { d, rt: x } : b; }, { d: 0.06, rt: null }).rt;
+      if (!rt) return;
+      const secs = rr.sections || [];
+      rt.lanes = secs.filter(x => x.sectionType === 'LANES' && x.lanes && x.lanes.length);
+      rt.limits = secs.filter(x => x.sectionType === 'SPEED_LIMIT' && x.maxSpeedLimitInKmh);
+      // REST point indexes refer to the REST polyline; use its points so indexes line up
+      const pts = (rr.legs || []).flatMap(l => (l.points || []).map(p => [+p.latitude, +p.longitude]));
+      if (pts.length) rt.secPath = pts;
+    });
+  } catch (e) { }
 }
 function segLen(rt, sec) { const pts = rt.legs.flatMap(l => l.points.map(LL)); let m = 0; for (let i = sec.startPointIndex; i < Math.min(sec.endPointIndex, pts.length - 1); i++) m += hav(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]); return m; }
 function tripCost(rt) {
@@ -527,7 +554,7 @@ let camBearing = 0, userPanned = 0, limitKmh = 0, overSpoken = 0;
 const LANE_ICON = { STRAIGHT: '⬆', LEFT: '⬅', RIGHT: '➡', SLIGHT_LEFT: '↖', SLIGHT_RIGHT: '↗', SHARP_LEFT: '⬅', SHARP_RIGHT: '➡', U_TURN: '↩', NONE: '·' };
 function laneGuide(cur, dist) {
   const bar = $('#nav-lanes'); if (!activeRoute || !activeRoute.lanes || !activeRoute.lanes.length) { bar.classList.add('hidden'); return; }
-  const ni = nearestIdx(activeRoute.path);
+  const ni = nearestIdx(activeRoute.secPath || activeRoute.path);
   const sec = activeRoute.lanes.find(l => ni >= l.startPointIndex - 2 && ni <= l.endPointIndex);
   if (!sec || dist > 800) { bar.classList.add('hidden'); return; }
   bar.innerHTML = sec.lanes.map(l => { const d = (l.directions || [])[0] || 'STRAIGHT'; return `<span class="lane${l.follow ? ' on' : ''}">${LANE_ICON[d] || '⬆'}</span>`; }).join('')
@@ -536,7 +563,7 @@ function laneGuide(cur, dist) {
 }
 function speedLimitSign(kmh) {
   const el = $('#limit'); if (!activeRoute || !activeRoute.limits || !activeRoute.limits.length) { el.classList.add('hidden'); limitKmh = 0; return; }
-  const ni = nearestIdx(activeRoute.path); const sec = activeRoute.limits.find(l => ni >= l.startPointIndex && ni <= l.endPointIndex);
+  const ni = nearestIdx(activeRoute.secPath || activeRoute.path); const sec = activeRoute.limits.find(l => ni >= l.startPointIndex && ni <= l.endPointIndex);
   if (!sec) { el.classList.add('hidden'); limitKmh = 0; return; }
   limitKmh = Math.round(sec.maxSpeedLimitInKmh); el.textContent = limitKmh; el.classList.remove('hidden');
   const over = kmh > limitKmh + 8; el.classList.toggle('over', over); $('#speedo').classList.toggle('over', over);
