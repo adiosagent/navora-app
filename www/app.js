@@ -2,6 +2,7 @@
    MET weather warnings, along-route POIs, smart re-route, community reports, emergency & privacy. No account, no tracking. */
 let map, myPos = null, myMarker = null, watchId = null, myState = '';
 let routes = [], activeIdx = 0, activeRoute = null, routeAlerts = [], destName = '';
+let myCountry = localStorage.getItem('nv_cc') || '';   // ISO country where the driver is (search works worldwide; this only biases ranking)
 let alerts = [], engineAlerts = [], liveIncidents = [], alertMarkers = {}, seenAlertIds = new Set();
 let cameras = [], camMarkers = [], camWarned = new Set(), poiMarkers = [];
 let metWarnings = [], metShown = false;
@@ -287,7 +288,7 @@ function drawMe() {
 }
 async function resolveState() {   // which state am I in → used to pick relevant MET warnings
   myState = '…';
-  try { const r = await tt.services.reverseGeocode({ key: KR.TOMTOM_KEY, position: [myPos.lng, myPos.lat] }); myState = (r.addresses[0].address.countrySubdivision || '').replace(/^Wilayah Persekutuan /i, ''); showMet(); } catch (e) { myState = ''; }
+  try { const r = await tt.services.reverseGeocode({ key: KR.TOMTOM_KEY, position: [myPos.lng, myPos.lat] }); const ad = r.addresses[0].address; myState = (ad.countrySubdivision || '').replace(/^Wilayah Persekutuan /i, ''); if (ad.countryCode) { myCountry = ad.countryCode.toUpperCase(); try { localStorage.setItem('nv_cc', myCountry); } catch (e) { } } showMet(); } catch (e) { myState = ''; }
 }
 
 /* ---------- routing ---------- */
@@ -473,6 +474,16 @@ async function findParking() {
 /* ---------- hands-free voice reporting ---------- */
 const VOICE_MAP = [[/jam|sesak|塞|堵/i, 'jam'], [/accident|kemalangan|crash|车祸|事故/i, 'accident'], [/police|polis|警察/i, 'police'], [/roadblock|sekatan|路障/i, 'roadblock'], [/flood|banjir|水/i, 'flood'], [/camera|kamera|aes|相机|测速/i, 'camera'], [/breakdown|rosak|故障|抛锚/i, 'breakdown'], [/pothole|lubang|坑/i, 'pothole'], [/closed|closure|tutup|封/i, 'closure'], [/hazard|bahaya|危险|object/i, 'hazard'], [/clear|lancar|畅通/i, 'clear']];
 function voiceReport() {
+  if (window.NATIVE) {   // Android / iOS app: native recognition (the WebView has no working Web Speech API)
+    (async () => {
+      if (!(await NATIVE.requestMic())) { toast('🎤 ' + T('mic_denied')); return; }
+      toast('🎤 ' + T('listening') + ' ' + T('say_report')); let got = false;
+      NATIVE.listen({ lang: LANG === 'en-GB' ? 'en-MY' : LANG, continuous: false,
+        onFinal: m => { got = true; const said = (m || []).join(' '); const hit = VOICE_MAP.find(([re]) => re.test(said)); if (hit) { toast(`🎤 ${T('heard')}: ${said} → ${TYPE_ICON[hit[1]] || '✅'}`); sendReport(hit[1]); } else if (window.VA && VA.onCommand) VA.onCommand(m); else toast('🎤 ' + T('not_understood')); },
+        onEnd: () => { if (!got) toast('🎤 ' + T('not_understood')); } });
+    })();
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) { toast('Voice input not supported on this browser'); return; }
   const rec = new SR(); rec.lang = LANG === 'en-GB' ? 'en-MY' : LANG; rec.interimResults = false; rec.maxAlternatives = 3;
   toast('🎤 ' + T('listening') + ' ' + T('say_report')); try { speechSynthesis.cancel(); } catch (e) { }
@@ -631,7 +642,7 @@ async function loadCameras() {
   try {
     const c = JSON.parse(localStorage.getItem('nv_cams') || 'null');
     if (c && Date.now() - c.ts < 7 * 86400000) { cameras = c.list; drawCameras(); return; }
-    const q = '[out:json][timeout:40];area["ISO3166-1"="MY"][admin_level=2]->.a;(node["highway"="speed_camera"](area.a);node["enforcement"="maxspeed"](area.a););out body;';
+    const q = '[out:json][timeout:40];area["ISO3166-1"="' + (myCountry || 'MY') + '"][admin_level=2]->.a;(node["highway"="speed_camera"](area.a);node["enforcement"="maxspeed"](area.a););out body;';
     const j = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) }).then(r => r.json());
     cameras = (j.elements || []).filter(e => e.lat && e.lon).map(e => ({ id: 'osm' + e.id, lat: e.lat, lng: e.lon, maxspeed: (e.tags && e.tags.maxspeed) || '', src: 'OSM' }));
     localStorage.setItem('nv_cams', JSON.stringify({ ts: Date.now(), list: cameras })); drawCameras();
@@ -822,39 +833,39 @@ async function searchPlaces(q, limit) {
   q = normQuery(q); limit = limit || 6;
   const key = _norm(q) + '|' + (myPos ? (myPos.lat.toFixed(1) + ',' + myPos.lng.toFixed(1)) : '') + '|' + LANG;
   if (_srchCache.has(key)) return _srchCache.get(key).slice(0, limit);
-  const center = myPos || { lat: 3.14, lng: 101.69 };   // KL when no fix yet
+  let center = myPos; if (!center) { try { const c = map.getCenter(); center = { lat: c.lat, lng: c.lng }; } catch (e) { center = { lat: 3.14, lng: 101.69 }; } }
   const addressy = isAddressy(q);
   const mapTT = p => { const [la, ln] = LL(p.position); const ep = p.entryPoints && p.entryPoints[0] && p.entryPoints[0].position; const e = ep ? LL(ep) : null; const a = p.address || {}; const hn = a.streetNumber || '';
     return { lat: la, lng: ln, elat: e ? e[0] : undefined, elng: e ? e[1] : undefined, name: p.poi ? p.poi.name : (a.freeformAddress || ''), addr: a.freeformAddress || '', src: 'tt', kind: p.type, hn, street: a.streetName || '' }; };
-  const tomtom = tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: !addressy, limit: 10, center: [center.lng, center.lat] })
+  const tomtom = tt.services.fuzzySearch({ key: KR.TOMTOM_KEY, query: q, language: LANG === 'zh-TW' ? 'zh-TW' : 'en-GB', typeahead: !addressy, limit: 10, center: [center.lng, center.lat] })
     .then(r => (r.results || []).map(mapTT)).catch(() => []);
   // full address → TomTom geocoder (street numbers, Taman / Jalan addresses) in parallel
   const geoFn = tt.services.geocode || tt.services.fuzzySearch;
   const geo = addressy ? (async () => {
-    let r = await geoFn({ key: KR.TOMTOM_KEY, query: q, countrySet: 'MY', limit: 5, center: [center.lng, center.lat] }).then(x => (x.results || []).map(mapTT)).catch(() => []);
+    let r = await geoFn({ key: KR.TOMTOM_KEY, query: q, limit: 5, center: [center.lng, center.lat] }).then(x => (x.results || []).map(mapTT)).catch(() => []);
     if (!r.length) {   // "72, CVR 9, Taman X" → "72 Jalan CVR 9, Taman X": many Malaysian addresses omit the word Jalan
       const parts = q.split(',').map(x => x.trim()).filter(Boolean);
-      if (parts.length > 1 && !/\b(jalan|lorong|persiaran|lebuh)\b/i.test(parts[1])) { const q2 = parts[0] + ' Jalan ' + parts.slice(1).join(', ');
-        r = await geoFn({ key: KR.TOMTOM_KEY, query: q2, countrySet: 'MY', limit: 5, center: [center.lng, center.lat] }).then(x => (x.results || []).map(mapTT)).catch(() => []); }
+      if ((!myCountry || myCountry === 'MY') && parts.length > 1 && !/\b(jalan|lorong|persiaran|lebuh)\b/i.test(parts[1])) { const q2 = parts[0] + ' Jalan ' + parts.slice(1).join(', ');
+        r = await geoFn({ key: KR.TOMTOM_KEY, query: q2, limit: 5, center: [center.lng, center.lat] }).then(x => (x.results || []).map(mapTT)).catch(() => []); }
     }
     return r;
   })() : Promise.resolve([]);
   if (_photonCtl) _photonCtl.abort(); _photonCtl = new AbortController();
   const photon = fetch('https://photon.komoot.io/api/?limit=10&lang=en&lat=' + center.lat + '&lon=' + center.lng + '&q=' + encodeURIComponent(q), { signal: _photonCtl.signal })
-    .then(r => r.json()).then(j => (j.features || []).filter(f => f.properties.countrycode === 'MY' && f.properties.name).map(f => {
+    .then(r => r.json()).then(j => (j.features || []).filter(f => f.properties.name).map(f => {
       const p = f.properties; const [ln, la] = f.geometry.coordinates;
       const addr = [p.street && p.housenumber ? p.housenumber + ' ' + p.street : p.street, p.district, p.city || p.county, p.postcode, p.state].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ');
       return { lat: +la, lng: +ln, name: p.name, addr, src: 'osm', kind: p.osm_value || p.type };
     })).catch(() => []);
   const [a0, b, g] = await Promise.all([tomtom, photon, geo]); const a = [...g, ...a0];
-  if (!a.length && !b.length) { try { const j = await (await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=my&limit=8&q=' + encodeURIComponent(q))).json(); b.push(...j.map(x => ({ lat: +x.lat, lng: +x.lon, name: (x.display_name || '').split(',')[0], addr: (x.display_name || '').split(',').slice(1, 5).join(',').trim(), src: 'osm', kind: x.type }))); } catch (e) { } }
+  if (!a.length && !b.length) { try { const j = await (await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&viewbox=' + (center.lng - 2) + ',' + (center.lat + 2) + ',' + (center.lng + 2) + ',' + (center.lat - 2) + '&q=' + encodeURIComponent(q))).json(); b.push(...j.map(x => ({ lat: +x.lat, lng: +x.lon, name: (x.display_name || '').split(',')[0], addr: (x.display_name || '').split(',').slice(1, 5).join(',').trim(), src: 'osm', kind: x.type }))); } catch (e) { } }
   const all = [...a, ...b].filter(x => !isNaN(x.lat) && !isNaN(x.lng));
   // de-duplicate (same name-ish within 300 m)
   const out = [];
   for (const x of all) { if (!out.some(y => hav(x.lat, x.lng, y.lat, y.lng) < 300 && (_norm(y.name).includes(_norm(x.name).slice(0, 12)) || _norm(x.name).includes(_norm(y.name).slice(0, 12))))) out.push(x); }
   // rank: name match quality first, then distance from me
   const nq = _norm(q), words = nq.split(' ').filter(Boolean);
-  const score = x => { const n = _norm(x.name); let s = 0; if (n === nq) s += 100; else if (n.startsWith(nq)) s += 60; else if (n.includes(nq)) s += 40; s += words.filter(w => n.includes(w)).length * 8; if (/residential|street|unclassified|tertiary|primary|secondary/.test(x.kind || '') && !/jalan|lorong|persiaran|lebuh/.test(nq)) s -= 25; if (x.src === 'tt' && x.kind === 'POI') s += 5; const num = (nq.match(/\b(\d+[a-z]?)\b/) || [])[1]; if (num && x.hn && _norm(x.hn) === num) s += 70; else if (num && x.kind === 'Point Address') s += 20; if (x.kind === 'Point Address') s += 15; if (/^Street$/.test(x.kind || '') && num) s -= 10; const d = myPos ? hav(myPos.lat, myPos.lng, x.lat, x.lng) : 0; s -= Math.min(30, d / 10000); return s; };
+  const score = x => { const n = _norm(x.name); let s = 0; if (n === nq) s += 100; else if (n.startsWith(nq)) s += 60; else if (n.includes(nq)) s += 40; s += words.filter(w => n.includes(w)).length * 8; if (/residential|street|unclassified|tertiary|primary|secondary/.test(x.kind || '') && !/jalan|lorong|persiaran|lebuh/.test(nq)) s -= 25; if (x.src === 'tt' && x.kind === 'POI') s += 5; const num = (nq.match(/\b(\d+[a-z]?)\b/) || [])[1]; if (num && x.hn && _norm(x.hn) === num) s += 70; else if (num && x.kind === 'Point Address') s += 20; if (x.kind === 'Point Address') s += 15; if (/^Street$/.test(x.kind || '') && num) s -= 10; const d = hav(center.lat, center.lng, x.lat, x.lng); s -= Math.min(30, d / 10000); if (d > 300000) s -= 20; return s; };
   out.sort((p1, p2) => score(p2) - score(p1));
   _srchCache.set(key, out); if (_srchCache.size > 200) _srchCache.delete(_srchCache.keys().next().value);
   return out.slice(0, limit);

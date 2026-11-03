@@ -63,7 +63,15 @@
   /* ---- speech recognition (native: Android + iOS; no Chrome beep; iPhone gets "Hello Navora" too) ---- */
   let listening = false, partialHandler = null, finalHandler = null, endHandler = null, srBound = false;
   N.speechSupported = async () => { try { return !!(await SR.call('available')).available; } catch (e) { return false; } };
-  N.requestMic = async () => { try { const p = await SR.call('requestPermissions'); return p.speechRecognition === 'granted'; } catch (e) { return false; } };
+  const micOk = p => !!p && ['granted', 'limited'].includes(p.speechRecognition || p.microphone || p.record_audio);
+  N.requestMic = async () => {
+    try { const c = await SR.call('checkPermissions'); if (micOk(c)) return true; } catch (e) { }
+    try { const p = await SR.call('requestPermissions', { permissions: ['speechRecognition'] }); if (micOk(p)) return true; } catch (e) { }
+    try { const p = await SR.call('requestPermissions'); if (micOk(p)) return true; } catch (e) { }
+    // last resort: the plugin may report "prompt" even after the user allowed it — try to start and see
+    try { const a = await SR.call('available'); if (a && a.available) { const c = await SR.call('checkPermissions'); return micOk(c) || !c || c.speechRecognition === 'prompt'; } } catch (e) { }
+    return false;
+  };
   N.listen = async ({ lang, continuous, onPartial, onFinal, onEnd }) => {
     partialHandler = onPartial; finalHandler = onFinal; endHandler = onEnd;
     try {
